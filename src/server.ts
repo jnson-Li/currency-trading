@@ -1,5 +1,5 @@
 // Import the framework and instantiate it
-
+import 'dotenv/config'
 import { buildApp } from './app.js'
 
 const app = await buildApp()
