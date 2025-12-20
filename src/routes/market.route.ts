@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify'
 import { fetchNewKline, fetchBiAnKline } from '../services/market.service.js'
 import { NewKlineParams, BiAnKlineParams } from '../types/market.js'
 import { getMarketSchema, getBiAnKlineSchema } from '../schemas/user.market.js'
+import { eth15mManager } from '@/managers/index.js'
 
 export default async function marketRoutes(app: FastifyInstance) {
     app.post<{
@@ -19,8 +20,8 @@ export default async function marketRoutes(app: FastifyInstance) {
     }>('/kline', {
         schema: getBiAnKlineSchema,
         handler: async (request) => {
-            console.log('[ request.query ] >', request.query)
-            const data = await fetchBiAnKline(request.query)
+            const data = eth15mManager.getKlines(request.query)
+
             return { msg: 'success', data }
         },
     })

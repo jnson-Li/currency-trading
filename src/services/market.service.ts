@@ -1,7 +1,11 @@
-// src/services/market.service.ts
 import { httpFetch } from '../infra/http.js'
-import { proxyAgent } from '../infra/proxy.js'
-import { NewKlineParams, BiAnKlineParams } from '../types/market.js'
+import {
+    BinanceRawKlines,
+    BinanceRawKline,
+    NewKlineParams,
+    BiAnKlineParams,
+} from '@/types/market.js'
+
 export async function fetchNewKline(params: NewKlineParams) {
     const res = await fetch('https://api9528mystks.mystonks.org/api/v1/stockhome/newKline', {
         method: 'POST',
@@ -16,7 +20,7 @@ export async function fetchNewKline(params: NewKlineParams) {
 
     return res.json()
 }
-export async function fetchBiAnKline(params: BiAnKlineParams) {
+export async function fetchBiAnKline(params: BiAnKlineParams): Promise<BinanceRawKlines> {
     const query = new URLSearchParams(
         Object.entries(params).map(([key, value]) => [key, String(value)])
     ).toString()
@@ -25,5 +29,6 @@ export async function fetchBiAnKline(params: BiAnKlineParams) {
         throw new Error(`fetch BAKline failed: ${res.status}`)
     }
 
-    return res.json()
+    const data = (await res.json()) as BinanceRawKlines
+    return data
 }
