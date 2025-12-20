@@ -21,22 +21,23 @@ export const getMarketSchema = {
         },
     },
 } as const
-
-export const addUserSchema = {
-    body: {
+export const getBiAnKlineSchema = {
+    querystring: {
         type: 'object',
+        required: ['symbol', 'limit', 'interval'],
         properties: {
-            nick: { type: 'string' },
-            sex: { type: 'number', enum: [0, 1, 2, 3] },
+            symbol: { type: 'string' },
+            interval: { type: 'string' },
+            limit: { type: 'string' },
         },
-        required: ['nick'],
     },
     response: {
         200: {
             type: 'object',
-            required: ['msg'],
+            required: ['msg', 'data'],
             properties: {
                 msg: { type: 'string' },
+                data: {},
             },
         },
     },

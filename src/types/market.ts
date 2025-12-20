@@ -5,3 +5,8 @@ export interface NewKlineParams {
     pageIndex: number
     pageSize: number
 }
+export interface BiAnKlineParams {
+    symbol: string
+    interval: string
+    limit: number | string
+}

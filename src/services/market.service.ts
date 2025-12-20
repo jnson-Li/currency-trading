@@ -1,6 +1,7 @@
 // src/services/market.service.ts
-
-import { NewKlineParams } from '../types/market.js'
+import { httpFetch } from '../infra/http.js'
+import { proxyAgent } from '../infra/proxy.js'
+import { NewKlineParams, BiAnKlineParams } from '../types/market.js'
 export async function fetchNewKline(params: NewKlineParams) {
     const res = await fetch('https://api9528mystks.mystonks.org/api/v1/stockhome/newKline', {
         method: 'POST',
@@ -9,9 +10,19 @@ export async function fetchNewKline(params: NewKlineParams) {
         },
         body: JSON.stringify(params),
     })
-    console.log('[ k线数据 ] >', res)
     if (!res.ok) {
         throw new Error(`fetch newKline failed: ${res.status}`)
+    }
+
+    return res.json()
+}
+export async function fetchBiAnKline(params: BiAnKlineParams) {
+    const query = new URLSearchParams(
+        Object.entries(params).map(([key, value]) => [key, String(value)])
+    ).toString()
+    const res = await httpFetch(`https://api.binance.com/api/v3/klines?${query}`)
+    if (!res.ok) {
+        throw new Error(`fetch BAKline failed: ${res.status}`)
     }
 
     return res.json()
