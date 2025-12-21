@@ -3,17 +3,17 @@ import { Kline } from '@/types/market.js'
 import { calcEMA } from '@/utils/ema.js'
 import { findSwings } from '@/utils/swing.js'
 
-export class ETH1hKlineManager extends BaseKlineManager {
+export class ETH4hKlineManager extends BaseKlineManager {
     protected readonly SYMBOL = 'ETHUSDT'
-    protected readonly INTERVAL = '1h'
+    protected readonly INTERVAL = '4h'
     protected readonly HTTP_LIMIT = 100
-    protected readonly CACHE_LIMIT = 300
-    protected readonly LOG_PREFIX = 'ETH 1h'
+    protected readonly CACHE_LIMIT = 200
+    protected readonly LOG_PREFIX = 'ETH 4h'
 
     protected updateAnalysis() {
-        // ===== 趋势：EMA 21 =====
+        // ===== 趋势：EMA 34（更稳）=====
         const closes = this.getCloses()
-        const ema = calcEMA(closes, 21)
+        const ema = calcEMA(closes, 34)
         const lastClose = closes[closes.length - 1]
 
         if (ema) {
@@ -22,8 +22,8 @@ export class ETH1hKlineManager extends BaseKlineManager {
             else this.trend = 'range'
         }
 
-        // ===== 结构：Swing lookback 3 =====
-        const { highs, lows } = findSwings(this.klines, 3)
+        // ===== 结构：Swing lookback 5（过滤噪声）=====
+        const { highs, lows } = findSwings(this.klines, 5)
 
         if (highs.length >= 2 && lows.length >= 2) {
             const h1 = highs[highs.length - 2]
@@ -40,8 +40,11 @@ export class ETH1hKlineManager extends BaseKlineManager {
     }
 
     protected onNewClosedKline(k: Kline) {
-        console.log('[ETH 1h closed]', new Date(k.closeTime).toISOString(), k.close)
+        console.log('[ETH 4h closed]', new Date(k.closeTime).toISOString(), k.close)
 
-        // 1h 趋势 / 结构判断
+        // 4h：大级别趋势 / 方向过滤
+        // - 是否多头 / 空头结构
+        // - 是否震荡
+        // - 是否在关键区间
     }
 }

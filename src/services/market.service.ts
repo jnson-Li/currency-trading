@@ -1,4 +1,5 @@
 import { httpFetch } from '../infra/http.js'
+import { stableFetch } from '@/infra/fetch.js'
 import {
     BinanceRawKlines,
     BinanceRawKline,
@@ -24,7 +25,7 @@ export async function fetchBiAnKline(params: BiAnKlineParams): Promise<BinanceRa
     const query = new URLSearchParams(
         Object.entries(params).map(([key, value]) => [key, String(value)])
     ).toString()
-    const res = await httpFetch(`https://api.binance.com/api/v3/klines?${query}`)
+    const res = await stableFetch(`https://api.binance.com/api/v3/klines?${query}`)
     if (!res.ok) {
         throw new Error(`fetch BAKline failed: ${res.status}`)
     }

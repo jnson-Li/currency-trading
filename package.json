@@ -1,21 +1,24 @@
 {
-  "type": "module",
-  "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js"
-  },
-  "dependencies": {
-    "dotenv": "^17.2.3",
-    "fastify": "^5.6.2",
-    "https-proxy-agent": "^7.0.6",
-    "undici": "^7.16.0",
-    "ws": "^8.18.3"
-  },
-  "devDependencies": {
-    "@types/node": "^25.0.3",
-    "@types/ws": "^8.18.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
-  }
+    "type": "module",
+    "scripts": {
+        "dev": "tsx watch src/server.ts",
+        "build": "tsc",
+        "start": "node dist/server.js",
+        "backtest": "node src/backtest/run.ts",
+        "backtest:sliced": "node --loader ts-node/esm src/backtest/run-sliced.ts",
+        "backtest:stability": "node --loader ts-node/esm src/backtest/run-stability.ts"
+    },
+    "dependencies": {
+        "dotenv": "^17.2.3",
+        "fastify": "^5.6.2",
+        "https-proxy-agent": "^7.0.6",
+        "undici": "^7.16.0",
+        "ws": "^8.18.3"
+    },
+    "devDependencies": {
+        "@types/node": "^25.0.3",
+        "@types/ws": "^8.18.1",
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.3"
+    }
 }
