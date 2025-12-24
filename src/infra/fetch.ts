@@ -1,5 +1,6 @@
 // src/network/fetch.ts
-import { fetch, RequestInit, Dispatcher } from 'undici'
+import { fetch, Dispatcher, type RequestInit } from 'undici'
+
 import { proxyAgent } from './proxy.js'
 
 export interface StableFetchOptions extends RequestInit {
@@ -12,9 +13,14 @@ function sleep(ms: number) {
     return new Promise((res) => setTimeout(res, ms))
 }
 
-function isRetryableError(err: any) {
-    const msg = err?.message || ''
+function isAbortError(err: any) {
+    return err?.name === 'AbortError' || String(err?.message).includes('aborted')
+}
+
+function isRetryableNetworkError(err: any) {
+    const msg = String(err?.message || '')
     return (
+        isAbortError(err) ||
         msg.includes('fetch failed') ||
         msg.includes('TLS') ||
         msg.includes('ECONNRESET') ||
@@ -23,8 +29,18 @@ function isRetryableError(err: any) {
     )
 }
 
+function isRetryableHttpStatus(status: number) {
+    // Binance / Cloudflare 常见
+    return status === 418 || status === 429 || status >= 500
+}
+
 export async function stableFetch(url: string, options: StableFetchOptions = {}) {
-    const { timeoutMs = 10_000, retries = 3, retryDelayMs = 800, ...rest } = options
+    const {
+        timeoutMs = 30_000, // ⬅️ 对 Binance 友好
+        retries = 4,
+        retryDelayMs = 1_000,
+        ...rest
+    } = options
 
     let lastError: any
 
@@ -38,26 +54,43 @@ export async function stableFetch(url: string, options: StableFetchOptions = {})
                 signal: controller.signal,
                 dispatcher: proxyAgent as Dispatcher | undefined,
                 headers: {
-                    'User-Agent': 'Mozilla/5.0',
+                    'User-Agent': 'Mozilla/5.0 BinanceFetcher',
+                    Accept: 'application/json',
                     ...rest.headers,
                 },
             })
 
             if (!res.ok) {
-                throw new Error(`HTTP ${res.status} ${res.statusText}`)
+                // HTTP 错误单独处理
+                if (isRetryableHttpStatus(res.status) && attempt < retries) {
+                    lastError = new Error(`HTTP ${res.status} ${res.statusText}`)
+                } else {
+                    throw new Error(`HTTP ${res.status} ${res.statusText}`)
+                }
+            } else {
+                return res
             }
-
-            return res
-        } catch (err) {
+        } catch (err: any) {
             lastError = err
 
-            if (!isRetryableError(err) || attempt === retries) {
+            const retryable =
+                isRetryableNetworkError(err) ||
+                (err?.message?.startsWith('HTTP') && attempt < retries)
+
+            if (!retryable || attempt === retries) {
                 break
             }
 
-            // 指数退避
-            const delay = retryDelayMs * attempt
-            await sleep(delay)
+            // ⏳ 指数退避 + 抖动
+            const backoff =
+                retryDelayMs * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 300)
+
+            console.warn(
+                `[stableFetch] retry ${attempt}/${retries} after ${backoff}ms`,
+                err?.name || err
+            )
+
+            await sleep(backoff)
         } finally {
             clearTimeout(timeout)
         }

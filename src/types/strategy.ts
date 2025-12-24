@@ -27,3 +27,16 @@ export interface TradeSignal {
 
     createdAt: number
 }
+export interface TradePermission {
+    allowed: boolean
+    reason:
+        | 'ok'
+        | 'not_ready'
+        | 'missing_snapshot'
+        | '4h_unhealthy'
+        | '1h_unhealthy'
+        | '5m_unstable'
+        | 'stale_data'
+        | 'clock_skew'
+    detail?: string
+}

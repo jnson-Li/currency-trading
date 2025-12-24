@@ -21,15 +21,25 @@ export async function fetchNewKline(params: NewKlineParams) {
 
     return res.json()
 }
-export async function fetchBiAnKline(params: BiAnKlineParams): Promise<BinanceRawKlines> {
-    const query = new URLSearchParams(
-        Object.entries(params).map(([key, value]) => [key, String(value)])
-    ).toString()
-    const res = await stableFetch(`https://api.binance.com/api/v3/klines?${query}`)
-    if (!res.ok) {
-        throw new Error(`fetch BAKline failed: ${res.status}`)
-    }
 
-    const data = (await res.json()) as BinanceRawKlines
-    return data
+export async function fetchBiAnKline(params: BiAnKlineParams) {
+    const query = new URLSearchParams(
+        Object.entries(params).map(([k, v]) => [k, String(v)])
+    ).toString()
+
+    const url = `https://api.binance.com/api/v3/klines?${query}`
+
+    try {
+        const res = await stableFetch(url)
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`)
+        }
+        return (await res.json()) as BinanceRawKlines
+    } catch (e: any) {
+        console.error('[fetchBiAnKline failed]', {
+            url,
+            error: e?.name || e,
+        })
+        throw e
+    }
 }

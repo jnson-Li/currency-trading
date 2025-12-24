@@ -4,9 +4,9 @@
         "dev": "tsx watch src/server.ts",
         "build": "tsc",
         "start": "node dist/server.js",
-        "backtest": "node src/backtest/run.ts",
-        "backtest:sliced": "node --loader ts-node/esm src/backtest/run-sliced.ts",
-        "backtest:stability": "node --loader ts-node/esm src/backtest/run-stability.ts"
+        "backtest": "tsx src/backtest/run.ts",
+        "backtest:sliced": "tsx src/backtest/run-sliced.ts",
+        "backtest:stability": "tsx src/backtest/run-stability.ts"
     },
     "dependencies": {
         "dotenv": "^17.2.3",

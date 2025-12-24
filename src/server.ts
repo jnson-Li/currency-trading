@@ -1,12 +1,24 @@
 // Import the framework and instantiate it
+console.log('[load] server.ts')
 import 'dotenv/config'
 import { buildApp } from './app.js'
 import { ENV } from './config/env.js'
-import { eth15mManager, eth1hManager, eth4hManager, eth5mManager } from '@/managers/index.js'
+import {
+    ETH15mKlineManager,
+    ETH5mKlineManager,
+    ETH1hKlineManager,
+    ETH4hKlineManager,
+} from '@/managers/index.js'
 import { MultiTimeframeCoordinator } from './managers/multi-timeframe-coordinator.js'
-import { StrategyEngine } from '@/strategy/strategy-engine.js'
+import { StrategyContextBuilder } from './strategy/strategy-context-builder.js'
+import { StrategyEngine } from './strategy/strategy-engine.js'
 
 const app = await buildApp()
+
+const eth5mManager = new ETH5mKlineManager()
+const eth15mManager = new ETH15mKlineManager()
+const eth1hManager = new ETH1hKlineManager()
+const eth4hManager = new ETH4hKlineManager()
 
 const coordinator = new MultiTimeframeCoordinator(eth5mManager, eth1hManager, eth4hManager, {
     symbol: 'ETHUSDT',
@@ -17,23 +29,28 @@ const coordinator = new MultiTimeframeCoordinator(eth5mManager, eth1hManager, et
     pollMs: 1000,
 })
 
-coordinator.onStateChange((st) => {
-    // 给规则引擎 / GPT / 推送用
-    console.log('[Coordinator]', st.permission, {
-        m5: st.snapshots.m5?.closeTime,
-        h1: st.snapshots.h1?.closeTime,
-        h4: st.snapshots.h4?.closeTime,
-    })
-})
-
-export const strategy = new StrategyEngine(
+const contextBuilder = new StrategyContextBuilder(
     'ETHUSDT',
     eth5mManager,
     eth15mManager,
     eth1hManager,
-    eth4hManager,
-    coordinator
+    eth4hManager
 )
+
+const strategyEngine = new StrategyEngine()
+
+coordinator.onStateChange((state) => {
+    // ⚠️ 强约束：只在 5m close 后触发
+    if (state.snapshots.m5?.level !== 'L1') return
+
+    const ctx = contextBuilder.build(state)
+    if (!ctx) return
+
+    const signal = strategyEngine.evaluate(ctx)
+    if (!signal) return
+
+    console.log('[TRADE SIGNAL]', signal)
+})
 
 try {
     await eth5mManager.init()
@@ -44,6 +61,7 @@ try {
     await new Promise((r) => setTimeout(r, 500))
     await eth4hManager.init()
     coordinator.start()
+
     await app.listen({ port: ENV.PORT })
     console.log('🚀 Server running at http://localhost:3000')
 } catch (err) {

@@ -1,13 +1,16 @@
 // backtest/run.ts
+console.log('[load] run.ts')
+
 import { runBacktest } from './backtest-runner.js'
 import { getLast6MonthsWindow } from './time-window.js'
 import { summarizeBacktest } from './summary.js'
-import { loadHistorical5m } from './data-loader.js'
-import { BASE_BACKTEST_CONFIG } from './config/base-config.js'
+import { HistoricalDataStore } from '@/historical/HistoricalDataStore.js'
 async function main() {
     const { startTime, endTime } = getLast6MonthsWindow()
 
-    const klines5m = await loadHistorical5m('ETHUSDT', startTime, endTime)
+    const store = new HistoricalDataStore()
+
+    const klines5m = await store.getKlines('ETHUSDT', '5m', startTime, endTime)
 
     const results = await runBacktest(klines5m, {
         symbol: 'ETHUSDT',

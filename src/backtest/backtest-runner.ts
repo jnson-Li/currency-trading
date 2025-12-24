@@ -1,30 +1,36 @@
-// backtest/backtest-runner.ts
+console.log('[ runBacktest ] >')
 
-import { eth15mManager, eth1hManager, eth4hManager, eth5mManager } from '@/managers/index.js'
+import {
+    ETH15mKlineManager,
+    ETH5mKlineManager,
+    ETH1hKlineManager,
+    ETH4hKlineManager,
+} from '@/managers/index.js'
 
 import { MultiTimeframeCoordinator } from '@/managers/multi-timeframe-coordinator.js'
 import { StrategyEngine } from '@/strategy/strategy-engine.js'
+import { StrategyContextBuilder } from '@/strategy/strategy-context-builder.js'
 import { BacktestEngine } from '@/backtest/backtest-engine.js'
+
 import type { Kline } from '@/types/market.js'
 import type { BacktestConfig } from '@/types/backtest.js'
-
-// 如果你的 Interval 类型在 market.ts 里
 import type { Interval } from '@/types/market.js'
 
 /**
- * 回测驱动器：
- * - 不走 init()（避免 HTTP/WS）
- * - 用 feedHistoricalKline 推进各周期状态
- * - 只在 5m 收盘时跑策略
+ * 回测驱动器（最终版）：
+ * - managers：只 feed，不 init
+ * - coordinator：只算 permission / snapshot
+ * - contextBuilder：构造 StrategyContext
+ * - strategyEngine：纯 evaluate(ctx)
  */
 export async function runBacktest(klines5m: Kline[], config: BacktestConfig) {
-    // ===== 1️⃣ 构建 Managers（回测不 init）=====
-    const m5 = eth5mManager
-    const m15 = eth15mManager
-    const h1 = eth1hManager
-    const h4 = eth4hManager
+    // ===== 1️⃣ Managers（回测专用实例）=====
+    const m5 = new ETH5mKlineManager()
+    const m15 = new ETH15mKlineManager()
+    const h1 = new ETH1hKlineManager()
+    const h4 = new ETH4hKlineManager()
 
-    // ===== 2️⃣ Coordinator（只管 5m/1h/4h）=====
+    // ===== 2️⃣ Coordinator（不 start，不轮询）=====
     const coordinator = new MultiTimeframeCoordinator(m5, h1, h4, {
         symbol: config.symbol,
         staleBars: {
@@ -35,35 +41,42 @@ export async function runBacktest(klines5m: Kline[], config: BacktestConfig) {
         allowM5Warning: false,
         allowH1Warning: true,
         allowH4Warning: true,
-        // 回测不需要轮询
         pollMs: 0,
     })
 
-    // ⚠️ 回测不建议 coordinator.start()
-    // 因为 evaluate() 会直接调用 getTradePermission()
-    // coordinator.start?.() 如果你内部实现依赖 timer，可保持不调用即可
+    // ===== 3️⃣ StrategyContextBuilder（关键）=====
+    const contextBuilder = new StrategyContextBuilder(config.symbol, m5, m15, h1, h4)
 
-    // ===== 3️⃣ Strategy（包含 15m）=====
-    const strategy = new StrategyEngine(config.symbol, m5, m15, h1, h4, coordinator)
+    // ===== 4️⃣ StrategyEngine（纯决策器）=====
+    const strategyEngine = new StrategyEngine()
 
-    // ===== 4️⃣ BacktestEngine =====
+    // ===== 5️⃣ BacktestEngine =====
     const backtest = new BacktestEngine(config)
 
-    // ===== 5️⃣ 主循环：用 5m 驱动所有周期 =====
+    // ===== 6️⃣ 主回测循环（5m 驱动一切）=====
     for (const k5 of klines5m) {
-        // 推进分析周期（顺序无所谓，保持一致即可）
+        // 推进各周期（顺序无所谓，但要一致）
         h4.feedHistoricalKline(k5)
         h1.feedHistoricalKline(k5)
         m15.feedHistoricalKline(k5)
         m5.feedHistoricalKline(k5)
 
-        // 只在 5m 收盘后执行策略（我们的循环本身就是收盘序列）
-        const signal = strategy.evaluate()
+        // coordinator 不轮询，手动 recompute
+        coordinator.recomputeAndNotify?.()
+
+        const state = coordinator.getState()
+        if (!state) continue
+
+        // 只在 5m 收盘后构造 context
+        const ctx = contextBuilder.build(state)
+        if (!ctx) continue
+
+        const signal = strategyEngine.evaluate(ctx)
         if (signal) {
             backtest.onSignal(signal)
         }
 
-        // 更新持仓：TP/SL 命中检查
+        // 推进持仓（TP / SL）
         backtest.onNew5mCandle({
             high: k5.high,
             low: k5.low,

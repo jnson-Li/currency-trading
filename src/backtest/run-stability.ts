@@ -4,8 +4,10 @@ import { runBacktest } from './backtest-runner.js'
 import { summarizeBacktest } from './summary.js'
 import { scoreSlice } from './stability/score.js'
 import { buildStabilityTable } from './stability/stability-table.js'
-import { loadHistorical5m } from './data-loader.js'
 import { BASE_BACKTEST_CONFIG } from './config/base-config.js'
+
+// 🔁 新增：统一历史数据仓库
+import { HistoricalDataStore } from '@/historical/HistoricalDataStore.js'
 
 async function main() {
     console.log('▶ Running stability test (6 months, monthly slices)...')
@@ -18,8 +20,17 @@ async function main() {
 
     const rows = []
 
+    // 🔁 全局只创建一次
+    const store = new HistoricalDataStore({
+        retry: 3,
+        throttleMs: 300,
+    })
+
     for (const s of slices) {
-        const klines = await loadHistorical5m('ETHUSDT', s.start, s.end)
+        console.log(`📊 Slice ${new Date(s.start).toISOString().slice(0, 7)}`)
+
+        // 🔁 用 store 替代 loadHistorical5m
+        const klines = await store.getKlines('ETHUSDT', '5m', s.start, s.end)
 
         const results = await runBacktest(klines, {
             ...BASE_BACKTEST_CONFIG,

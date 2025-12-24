@@ -6,25 +6,12 @@
 // - 提供 onStateChange 订阅（便于你接规则引擎 / GPT / 推送）
 
 import type { BaseKlineManager } from './base-kline-manager.js'
-import { Kline, BinanceRawKline, KlineSnapshot, IntervalLevel } from '@/types/market.js'
+import { KlineSnapshot, IntervalLevel } from '@/types/market.js'
+import type { TradePermission } from '@/types/strategy.js'
 
 /** 你 BaseKlineManager 里已经有 timeHealth 的概念的话，建议统一成这三档 */
 export type TimeHealth = 'healthy' | 'warning' | 'broken'
 export type Interval = '5m' | '1h' | '4h'
-
-export interface TradePermission {
-    allowed: boolean
-    reason:
-        | 'ok'
-        | 'not_ready'
-        | 'missing_snapshot'
-        | '4h_unhealthy'
-        | '1h_unhealthy'
-        | '5m_unstable'
-        | 'stale_data'
-        | 'clock_skew'
-    detail?: string
-}
 
 export interface CoordinatorState {
     symbol: string

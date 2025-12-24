@@ -1,3 +1,5 @@
+console.log('[load] data-loader.ts')
+
 import path from 'path'
 import { fetchBiAnKline } from '@/services/market.service.js'
 import type { Kline, BinanceRawKline } from '@/types/market.js'

@@ -1,6 +1,6 @@
 // backtest/summary.ts
 import type { TradeResult, BacktestReport } from '@/types/backtest.js'
-
+console.log('[ summarizeBacktest ] >')
 export function summarizeBacktest(results: TradeResult[]): BacktestReport {
     if (results.length === 0) {
         return {

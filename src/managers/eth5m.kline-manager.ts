@@ -1,6 +1,5 @@
 import { BaseKlineManager } from './base-kline-manager.js'
 import { Kline } from '@/types/market.js'
-import { strategy } from '@/server.js'
 
 function calcEMA(values: number[], period: number): number | null {
     if (values.length < period) return null
@@ -55,13 +54,7 @@ export class ETH5mKlineManager extends BaseKlineManager {
 
     protected afterAnalysis(k: Kline) {
         console.log('[ETH 5m closed]', new Date(k.closeTime).toISOString(), k.close)
-
         this.updateEntrySignals()
-
-        const signal = strategy.evaluate()
-        if (!signal) return
-
-        console.log('[TRADE SIGNAL]', signal)
     }
 
     private updateEntrySignals() {
