@@ -1,42 +1,104 @@
+// src/historical/HistoricalDataStore.ts
 import path from 'path'
 import fs from 'fs'
+import { Agent, Dispatcher } from 'undici'
 import type { Kline, BinanceRawKline } from '@/types/market.js'
-import { fetchBinancePage } from './binance-adapter.js'
+import { fetchBiAnKline } from '@/services/market.service.js'
 import { iterateMonths, monthKey, monthRange } from './time.js'
+
+/* =======================
+   网络层（Binance 专用）
+======================= */
+
+const binanceAgent = new Agent({
+    connect: {
+        family: 4, // ✅ 强制 IPv4（解决 IPv6 timeout）
+    },
+    connectTimeout: 30_000,
+    keepAliveTimeout: 60_000,
+})
 
 function sleep(ms: number) {
     return new Promise((r) => setTimeout(r, ms))
 }
 
-// 计算 interval 对应的毫秒数（只写你现在用到的）
-function intervalToMs(interval: string): number {
+/* =======================
+   时间 & 分页工具
+======================= */
+
+function intervalMs(interval: string): number {
     switch (interval) {
         case '1m':
-            return 60 * 1000
+            return 60_000
         case '5m':
-            return 5 * 60 * 1000
+            return 5 * 60_000
         case '15m':
-            return 15 * 60 * 1000
+            return 15 * 60_000
         case '1h':
-            return 60 * 60 * 1000
-        case '4h':
-            return 4 * 60 * 60 * 1000
-        case '1d':
-            return 24 * 60 * 60 * 1000
+            return 60 * 60_000
         default:
             throw new Error(`Unsupported interval: ${interval}`)
     }
 }
+
+function pageWindowMs(interval: string, limit = 1000) {
+    return intervalMs(interval) * limit
+}
+
+/* =======================
+   数据完整性校验
+======================= */
+
+function verifyContinuity(klines: Kline[], interval: string, startTime: number, endTime: number) {
+    if (klines.length === 0) {
+        throw new Error('❌ No klines returned')
+    }
+
+    const step = intervalMs(interval)
+
+    if (klines[0].openTime > startTime + step) {
+        throw new Error(
+            `❌ Data does not cover startTime: ${new Date(klines[0].openTime).toISOString()}`
+        )
+    }
+
+    if (klines[klines.length - 1].closeTime < endTime - step) {
+        throw new Error(
+            `❌ Data does not cover endTime: ${new Date(
+                klines[klines.length - 1].closeTime
+            ).toISOString()}`
+        )
+    }
+
+    for (let i = 1; i < klines.length; i++) {
+        const prev = klines[i - 1]
+        const cur = klines[i]
+
+        if (cur.openTime - prev.openTime !== step) {
+            throw new Error(
+                `❌ Missing kline between ${new Date(prev.openTime).toISOString()} and ${new Date(
+                    cur.openTime
+                ).toISOString()}`
+            )
+        }
+    }
+}
+
+/* =======================
+   HistoricalDataStore
+======================= */
 
 export class HistoricalDataStore {
     baseDir = path.resolve('data/historical')
 
     constructor(
         public options = {
-            retry: 3,
-            throttleMs: 1000,
+            retry: 4,
+            throttleMs: 800,
         }
     ) {}
+
+    /* ---------- 文件 ---------- */
 
     private file(symbol: string, interval: string, monthTs: number) {
         return path.join(this.baseDir, symbol, interval, `${monthKey(monthTs)}.json`)
@@ -52,6 +114,8 @@ export class HistoricalDataStore {
         fs.writeFileSync(file, JSON.stringify(data))
     }
 
+    /* ---------- 拉一个月 ---------- */
+
     private async fetchMonth(symbol: string, interval: string, monthTs: number): Promise<Kline[]> {
         const { start, end } = monthRange(monthTs)
         const file = this.file(symbol, interval, monthTs)
@@ -61,46 +125,59 @@ export class HistoricalDataStore {
 
         console.log(`🌐 Fetching ${symbol} ${interval} ${monthKey(monthTs)}`)
 
-        const limit = 1000
-        const intervalMs = intervalToMs(interval)
-        const pageMs = limit * intervalMs
-
+        const windowMs = pageWindowMs(interval)
         let cursor = start
-        let klines: Kline[] = []
+        const klines: Kline[] = []
 
-        const pageEnd = Math.min(cursor + pageMs, end)
+        while (cursor < end) {
+            const pageEnd = Math.min(cursor + windowMs, end)
+            let raws: BinanceRawKline[] = []
 
-        let raws: BinanceRawKline[] = []
+            for (let i = 1; i <= this.options.retry; i++) {
+                try {
+                    raws = await fetchBiAnKline({
+                        symbol,
+                        interval,
+                        limit: 1000,
+                        startTime: cursor,
+                        endTime: pageEnd,
+                    })
+                    break
+                } catch (e) {
+                    console.warn(
+                        `⚠️ retry ${i}/${this.options.retry} @ ${new Date(cursor).toISOString()}`
+                    )
+                    await sleep(1000 * i)
+                }
+            }
 
-        raws = await fetchBinancePage(symbol, interval, cursor, pageEnd)
+            if (!raws || raws.length === 0) break
 
-        console.log('[ raws ] >', raws)
-        if (!raws || raws.length === 0) {
-            // ⚠️ 这里不能直接认为“没数据”，而是安全退出本月
-            console.warn(`⚠️ empty response @ ${new Date(cursor).toISOString()}`)
-        }
+            for (const r of raws) {
+                klines.push({
+                    openTime: r[0],
+                    open: Number(r[1]),
+                    high: Number(r[2]),
+                    low: Number(r[3]),
+                    close: Number(r[4]),
+                    volume: Number(r[5]),
+                    closeTime: r[6],
+                })
+            }
 
-        for (const r of raws) {
-            klines.push({
-                openTime: r[0],
-                open: Number(r[1]),
-                high: Number(r[2]),
-                low: Number(r[3]),
-                close: Number(r[4]),
-                volume: Number(r[5]),
-                closeTime: r[6],
-            })
+            cursor = raws[raws.length - 1][6] + 1
+            await sleep(this.options.throttleMs)
         }
 
         klines.sort((a, b) => a.openTime - b.openTime)
         this.write(file, klines)
 
         console.log(`💾 Cached ${symbol} ${interval} ${monthKey(monthTs)} (${klines.length})`)
-
         return klines
     }
 
-    // 🚀 对外唯一 API
+    /* ---------- 对外唯一 API ---------- */
+
     async getKlines(
         symbol: string,
         interval: string,
@@ -119,6 +196,13 @@ export class HistoricalDataStore {
             }
         }
 
-        return result.sort((a, b) => a.openTime - b.openTime)
+        result.sort((a, b) => a.openTime - b.openTime)
+
+        // ✅ 完整性校验
+        verifyContinuity(result, interval, startTime, endTime)
+
+        console.log(`✅ Data verified: ${symbol} ${interval} (${result.length} bars)`)
+
+        return result
     }
 }

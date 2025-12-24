@@ -24,7 +24,7 @@ async function main() {
         takeProfitPct: 0.02,
         executionInterval: '5m',
     })
-
+    console.log('[ results ] >', results)
     const report = summarizeBacktest(results)
 
     console.log('===== BACKTEST REPORT (LAST 6 MONTHS) =====')
