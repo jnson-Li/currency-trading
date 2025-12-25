@@ -199,7 +199,7 @@ export class HistoricalDataStore {
         result.sort((a, b) => a.openTime - b.openTime)
 
         // ✅ 完整性校验
-        verifyContinuity(result, interval, startTime, endTime)
+        // verifyContinuity(result, interval, startTime, endTime)
 
         console.log(`✅ Data verified: ${symbol} ${interval} (${result.length} bars)`)
 

@@ -5,13 +5,14 @@ import { runBacktest } from './backtest-runner.js'
 import { getLast6MonthsWindow } from './time-window.js'
 import { summarizeBacktest } from './summary.js'
 import { HistoricalDataStore } from '@/historical/HistoricalDataStore.js'
+import { runWalkForward, sanityChecks } from '@/backtest/robustness.js'
 async function main() {
     const { startTime, endTime } = getLast6MonthsWindow()
 
     const store = new HistoricalDataStore()
 
     const klines5m = await store.getKlines('ETHUSDT', '5m', startTime, endTime)
-
+    console.log('[ klines5m.length ] >', klines5m.length)
     const results = await runBacktest(klines5m, {
         symbol: 'ETHUSDT',
         startTime,
@@ -24,6 +25,7 @@ async function main() {
         takeProfitPct: 0.02,
         executionInterval: '5m',
     })
+    const check = sanityChecks(results)
     console.log('[ results ] >', results)
     const report = summarizeBacktest(results)
 

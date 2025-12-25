@@ -40,8 +40,7 @@ export class ETH4hKlineManager extends BaseKlineManager {
     }
 
     protected onNewClosedKline(k: Kline) {
-        console.log('[ETH 4h closed]', new Date(k.closeTime).toISOString(), k.close)
-
+        // console.log('[ETH 4h closed]', new Date(k.closeTime).toISOString(), k.close)
         // 4h：大级别趋势 / 方向过滤
         // - 是否多头 / 空头结构
         // - 是否震荡

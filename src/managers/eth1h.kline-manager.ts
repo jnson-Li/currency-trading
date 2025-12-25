@@ -40,8 +40,7 @@ export class ETH1hKlineManager extends BaseKlineManager {
     }
 
     protected onNewClosedKline(k: Kline) {
-        console.log('[ETH 1h closed]', new Date(k.closeTime).toISOString(), k.close)
-
+        // console.log('[ETH 1h closed]', new Date(k.closeTime).toISOString(), k.close)
         // 1h 趋势 / 结构判断
     }
 }

@@ -17,13 +17,14 @@ export class StrategyContextBuilder {
      * - 保证 snapshot 齐全
      */
     build(state: CoordinatorState): StrategyContext | null {
+        console.log('[ state.permission.allowed ] >', state.permission.allowed)
         if (!state.permission.allowed) return null
 
         const s5 = this.m5.getSnapshot?.()
         const s15 = this.m15.getSnapshot?.()
         const s1 = this.h1.getSnapshot?.()
         const s4 = this.h4.getSnapshot?.()
-
+        console.log('[ k线快照状态 ] >', s5, s15, s1, s4)
         if (!s5 || !s15 || !s1 || !s4) return null
 
         return {

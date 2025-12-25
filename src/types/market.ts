@@ -57,8 +57,8 @@ export type IntervalLevel = 'L1' | 'L2' | 'L3'
  * ===== 5m 执行层入场信号 =====
  */
 export interface EntrySignal {
-    breakout?: boolean
-    pullback?: boolean
+    breakout?: { long: boolean; short: boolean }
+    pullback?: { long: boolean; short: boolean }
 }
 
 /**
@@ -100,4 +100,6 @@ export interface KlineSnapshot {
     // ===== 执行 / 确认层扩展 =====
     entry?: EntrySignal // 5m
     mid?: MidConfirmation // 15m
+
+    atr14?: number
 }
