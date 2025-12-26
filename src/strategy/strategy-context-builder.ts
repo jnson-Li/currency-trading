@@ -1,4 +1,4 @@
-import type { CoordinatorState } from '@/managers/multi-timeframe-coordinator.js'
+import type { CoordinatorState } from '@/coordinators/multi-timeframe-coordinator.js'
 import type { BaseKlineManager } from '@/managers/base-kline-manager.js'
 import type { StrategyContext } from './strategy-context.js'
 

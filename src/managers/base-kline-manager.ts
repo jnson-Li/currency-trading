@@ -22,7 +22,7 @@ export abstract class BaseKlineManager {
     /* ========= 子类必须实现 ========= */
 
     protected abstract readonly SYMBOL: string
-    protected abstract readonly INTERVAL: Interval
+    protected abstract readonly INTERVAL: Interval | '1m'
     protected abstract readonly HTTP_LIMIT: number
     protected abstract readonly CACHE_LIMIT: number
     protected abstract readonly LOG_PREFIX: string

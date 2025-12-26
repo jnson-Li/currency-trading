@@ -1,5 +1,5 @@
 // backtest/backtest-coordinator.ts
-import type { CoordinatorState } from '@/managers/multi-timeframe-coordinator.js'
+import type { CoordinatorState } from '@/coordinators/multi-timeframe-coordinator.js'
 import type { TradePermission } from '@/types/strategy.js'
 
 export class BacktestCoordinator {

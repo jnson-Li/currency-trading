@@ -7,7 +7,7 @@ import {
     ETH4hKlineManager,
 } from '@/managers/index.js'
 
-import { MultiTimeframeCoordinator } from '@/managers/multi-timeframe-coordinator.js'
+import { MultiTimeframeCoordinator } from '@/coordinators/multi-timeframe-coordinator.js'
 import { StrategyEngine } from '@/strategy/strategy-engine.js'
 import { StrategyContextBuilder } from '@/strategy/strategy-context-builder.js'
 import { BacktestEngine } from '@/backtest/backtest-engine.js'
