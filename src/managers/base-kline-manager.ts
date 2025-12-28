@@ -41,6 +41,7 @@ export abstract class BaseKlineManager {
     protected structure: Structure = 'range'
 
     /* ========= WS 稳定性控制 ========= */
+    private closedListeners = new Set<(kline: Kline) => void>()
 
     private reconnecting = false
     private reconnectDelay = 1000 // 初始 1s
@@ -426,8 +427,21 @@ export abstract class BaseKlineManager {
      * ⚠️ 唯一正确的分析触发点
      * 每一根“已收盘 K 线”都会触发
      */
+    // 订阅k线关闭事件
+    public onClosedKline(cb: (kline: Kline) => void) {
+        this.closedListeners.add(cb)
+        return () => this.closedListeners.delete(cb)
+    }
     protected onNewClosedKline(k: Kline) {
+        console.log('[ onNewClosedKline ] >', this.klines.length)
         this.updateAnalysis()
         this.afterAnalysis(k)
+        for (const cb of this.closedListeners) {
+            try {
+                cb(k)
+            } catch (e) {
+                console.error('[BaseKlineManager] closed listener error', e)
+            }
+        }
     }
 }

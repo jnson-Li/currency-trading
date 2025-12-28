@@ -1,233 +1,148 @@
-// multi-timeframe-coordinator.ts
+import { CoordinatorPermission, CoordinatorState, TriggerPayload } from '@/types/coordinator.js'
+import type { Kline, KlineSnapshot } from '@/types/market.js'
 import type { Interval } from '@/types/market.js'
-import type { BaseKlineManager } from '@/managers/base-kline-manager.js'
 
 /**
- * =========================
- * 类型定义
- * =========================
+ * =============== Types ===============
  */
-export interface CoordinatorOptions {
-    symbol: string
-
-    // freshness：每个周期允许“多旧”（以该周期 step 的倍数）
-    // 比如 5m 的 closeTime 超过 2 根还没更新，就认为 stale
-    staleBars: Partial<Record<Interval, number>>
-
-    // 允许 5m 在 warning 状态下是否依旧允许交易
-    // 建议默认 false（更保守）
-    allowM5Warning?: boolean
-
-    // 允许 1h warning 是否允许交易（通常可以允许）
-    allowH1Warning?: boolean
-
-    // 允许 4h warning 是否允许交易（通常可以允许）
-    allowH4Warning?: boolean
-
-    // 轮询间隔：如果你没有事件总线，就用轮询来触发 state change
-    pollMs?: number
-}
-export interface DecisionState {
-    time: number
-    allowTrade: boolean
-    allowLong: boolean
-    allowShort: boolean
-    warnings: string[]
-}
-
-export interface TriggerState {
-    time: number
-    interval: Interval
-    reason: 'event' | 'poll'
-}
-
-export interface CoordinatorState {
-    decision: DecisionState
-    trigger?: TriggerState
-}
 
 /**
- * =========================
- * 周期分层定义
- * =========================
+ * =============== Coordinator ===============
+ *
+ * 核心设计原则：
+ * 1️⃣ 只接受「5m close」作为触发源
+ * 2️⃣ Decision（是否允许交易）与 Trigger（触发策略）彻底分离
+ * 3️⃣ h1 / h4 只影响 Decision，不直接触发 Strategy
  */
-
-// 决策周期（低频、稳定）
-const DECISION_INTERVALS: Interval[] = ['5m', '15m', '1h', '4h']
-
-// 触发周期（高频、timing）
-const TRIGGER_INTERVALS: string[] = ['1m']
-
-/**
- * =========================
- * Coordinator 实现
- * =========================
- */
-
 export class MultiTimeframeCoordinator {
-    private managers: Record<Interval, BaseKlineManager>
+    private symbol: string
 
-    private lastDecision: DecisionState | null = null
+    private lastClosed: Partial<Record<Interval, number>> = {}
 
-    private decisionListeners = new Set<(d: DecisionState) => void>()
-    private triggerListeners = new Set<(s: CoordinatorState) => void>()
+    private lastDecision: CoordinatorPermission | null = null
+    private lastState: CoordinatorState | null = null
 
-    private pollTimer?: NodeJS.Timeout
-    private readonly pollMs: number
+    // listeners
+    private decisionListeners = new Set<(d: CoordinatorPermission) => void>()
+    private triggerListeners = new Set<(t: TriggerPayload) => void>()
 
-    constructor(
-        managers: Record<Interval, BaseKlineManager>,
-        private readonly opts: CoordinatorOptions
-    ) {
-        this.managers = managers
-        this.pollMs = opts?.pollMs ?? 0
+    constructor(opts: {
+        symbol: string
+        staleBars: Partial<Record<Interval, number>>
+        allowM5Warning: boolean
+        allowH1Warning: boolean
+        allowH4Warning: boolean
+    }) {
+        this.symbol = opts.symbol
     }
 
     /**
-     * =========================
-     * 对外事件入口（核心）
-     * =========================
+     * ================== Public API ==================
      */
 
     /**
-     * ⭐ 事件驱动入口
-     * 由 BaseKlineManager.onClosedKline 调用
+     * bind-events 会在「5m 收盘」时调用这里
      */
-    public onIntervalClosed(interval: Interval, time: number, reason: 'event' | 'poll' = 'event') {
-        // 1️⃣ 决策层：只在决策周期更新
-        if (DECISION_INTERVALS.includes(interval)) {
-            const decision = this.computeDecision(time)
-            this.lastDecision = decision
-            this.emitDecision(decision)
+    on5mClosed(kline: Record<Interval, KlineSnapshot | null>) {
+        const closeTime = kline['5m']?.closeTime
+
+        // 防止重复 close（极其重要）
+        if (this.lastClosed['5m'] === closeTime) {
+            return
         }
 
-        // 2️⃣ 触发层：只在触发周期触发
-        if (TRIGGER_INTERVALS.includes(interval)) {
-            if (!this.lastDecision) return
-            if (!this.lastDecision.allowTrade) return
+        this.lastClosed['5m'] = closeTime
 
-            const state: CoordinatorState = {
-                decision: this.lastDecision,
-                trigger: {
-                    time,
-                    interval,
-                    reason,
-                },
-            }
-
-            this.emitTrigger(state)
+        // ① 重新计算 Decision
+        const decision = this.recomputeDecision(kline)
+        console.log('[ decision ] >', decision)
+        // ② 生成 state（用于 StrategyContext）
+        this.lastState = {
+            symbol: this.symbol,
+            computedAt: closeTime,
+            permission: decision,
+            lastClosed: { ...this.lastClosed },
         }
-    }
 
-    /**
-     * =========================
-     * 轮询兜底
-     * =========================
-     */
-
-    /**
-     * ⭐ 单次兜底 tick（供轮询或外部调用）
-     */
-    public tickOnce(reason: 'poll' = 'poll') {
-        const now = Date.now()
-
-        // 轮询兜底：只负责「刷新 decision」
-        const decision = this.computeDecision(now)
-        this.lastDecision = decision
-        this.emitDecision(decision)
-
-        // ❗ 注意：轮询不主动触发 trigger
-        // trigger 只来自事件（1m close）
-    }
-
-    /**
-     * ⭐ 启动轮询兜底
-     */
-    public start() {
-        if (this.pollMs <= 0) return
-        if (this.pollTimer) return
-
-        this.pollTimer = setInterval(() => {
-            this.tickOnce('poll')
-        }, this.pollMs)
-    }
-
-    public stop() {
-        if (this.pollTimer) {
-            clearInterval(this.pollTimer)
-            this.pollTimer = undefined
+        // ③ 仅在 allowed 时触发 Strategy
+        if (decision.allowed) {
+            this.emitTrigger({
+                interval: '5m',
+                time: closeTime,
+            })
         }
     }
 
     /**
-     * =========================
-     * 决策计算（核心逻辑）
-     * =========================
+     * h1 / h4 只更新状态，不触发 Strategy
      */
-
-    private computeDecision(time: number): DecisionState {
-        const warnings: string[] = []
-
-        /**
-         * 你原来 computeState 里
-         * 所有「大周期一致性 / warning / stale」
-         * 的逻辑，都应该迁移到这里
-         */
-
-        const m5 = this.managers['5m']?.getSnapshot()
-        const m15 = this.managers['15m']?.getSnapshot()
-        const h1 = this.managers['1h']?.getSnapshot()
-        const h4 = this.managers['4h']?.getSnapshot()
-
-        // === 示例判断（你可以替换为你自己的逻辑）===
-        let allowTrade = true
-        let allowLong = true
-        let allowShort = true
-
-        if (!m5 || !h1 || !h4) {
-            allowTrade = false
-            warnings.push('missing_snapshot')
-        }
-
-        // 示例：大周期冲突
-        if (m5 && h1 && m5.trend !== h1.trend) {
-            warnings.push('m5_h1_conflict')
-        }
-
-        return {
-            time,
-            allowTrade,
-            allowLong,
-            allowShort,
-            warnings,
-        }
+    onHigherIntervalClosed(interval: '1h' | '4h' | '15m', kline: Kline) {
+        this.lastClosed[interval] = kline.closeTime
+        // 不触发任何 decision / trigger
     }
 
     /**
-     * =========================
-     * 事件订阅
-     * =========================
+     * Strategy / bootstrap 调用
+     */
+    getState(): CoordinatorState | null {
+        return this.lastState
+    }
+
+    /**
+     * ================== Events ==================
      */
 
-    public onDecisionChange(fn: (d: DecisionState) => void) {
-        this.decisionListeners.add(fn)
-        return () => this.decisionListeners.delete(fn)
+    onDecisionChange(cb: (d: CoordinatorPermission) => void) {
+        this.decisionListeners.add(cb)
+        return () => this.decisionListeners.delete(cb)
     }
 
-    public onTrigger(fn: (s: CoordinatorState) => void) {
-        this.triggerListeners.add(fn)
-        return () => this.triggerListeners.delete(fn)
+    onTrigger(cb: (t: TriggerPayload) => void) {
+        this.triggerListeners.add(cb)
+        return () => this.triggerListeners.delete(cb)
     }
 
-    private emitDecision(d: DecisionState) {
-        for (const fn of this.decisionListeners) {
-            fn(d)
+    /**
+     * ================== Internals ==================
+     */
+
+    private recomputeDecision(
+        snapshots: Record<Interval, KlineSnapshot | null>
+    ): CoordinatorPermission {
+        const reasons: string[] = []
+
+        // 这里是你未来真正会扩展的地方
+        // 当前示例逻辑：只要 5m 有 close，就允许
+        if (!this.lastClosed['5m']) {
+            reasons.push('5m_not_closed')
+        }
+
+        const next: CoordinatorPermission = {
+            allowed: reasons.length === 0,
+            reasons,
+        }
+
+        if (
+            !this.lastDecision ||
+            next.allowed !== this.lastDecision.allowed ||
+            next.reasons.join('|') !== this.lastDecision.reasons.join('|')
+        ) {
+            this.lastDecision = next
+            this.emitDecision(next)
+        }
+
+        return next
+    }
+
+    private emitDecision(d: CoordinatorPermission) {
+        for (const cb of this.decisionListeners) {
+            cb(d)
         }
     }
 
-    private emitTrigger(s: CoordinatorState) {
-        for (const fn of this.triggerListeners) {
-            fn(s)
+    private emitTrigger(t: TriggerPayload) {
+        for (const cb of this.triggerListeners) {
+            cb(t)
         }
     }
 }

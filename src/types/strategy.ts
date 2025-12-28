@@ -3,7 +3,7 @@
 // types/strategy.ts
 
 import type { KlineSnapshot } from '@/types/market.js'
-
+import type { StrategyContext } from '@/strategy/strategy-context.js'
 export type TradeSide = 'long' | 'short'
 
 export interface TradeSignal {
@@ -18,12 +18,7 @@ export interface TradeSignal {
     reason: string
 
     // === 多周期上下文（完整快照） ===
-    context: {
-        h4: KlineSnapshot
-        h1: KlineSnapshot
-        m15: KlineSnapshot
-        m5: KlineSnapshot
-    }
+    context: StrategyContext
 
     createdAt: number
 }

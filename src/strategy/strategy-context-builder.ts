@@ -1,42 +1,115 @@
-import type { CoordinatorState } from '@/coordinators/multi-timeframe-coordinator.js'
-import type { BaseKlineManager } from '@/managers/base-kline-manager.js'
-import type { StrategyContext } from './strategy-context.js'
+// strategy/strategy-context-builder.ts
+import type { Interval } from '@/types/market.js'
+import type {
+    StrategyContext,
+    StrategyPermission,
+    StrategySnapshots,
+    StrategyTrigger,
+} from './strategy-context.js'
+
+type AnyState = any
+
+function pickPermission(state: AnyState): StrategyPermission {
+    // 兼容：
+    // - old: state.permission
+    // - new: state.decision.permission
+    const p = state?.permission ?? state?.decision?.permission
+    if (!p) return { allowed: true }
+    return {
+        allowed: !!p.allowed,
+        reason: p.reason,
+        warnings: p.warnings,
+    }
+}
+
+function pickSnapshots(state: AnyState): StrategySnapshots | null {
+    // 兼容：
+    // - old: state.snapshots
+    // - new: state.decision.snapshots
+    const s = state?.snapshots ?? state?.decision?.snapshots
+    return s ?? null
+}
+
+function pickTrigger(state: AnyState): StrategyTrigger | null {
+    // 兼容：
+    // - new: state.trigger
+    // - old: 没有 trigger（回测/旧版），那就从 state.computedAt / m5 closeTime 兜底
+    const t = state?.trigger
+    if (t?.interval && t?.closeTime) {
+        return {
+            interval: t.interval,
+            closeTime: t.closeTime,
+            kline: t.kline,
+        }
+    }
+    return null
+}
+
+function requireSnapshot(snapshots: StrategySnapshots, itv: Interval) {
+    return snapshots?.[itv] ?? null
+}
 
 export class StrategyContextBuilder {
-    constructor(
-        private readonly symbol: string,
-        private readonly m5: BaseKlineManager,
-        private readonly m15: BaseKlineManager,
-        private readonly h1: BaseKlineManager,
-        private readonly h4: BaseKlineManager
-    ) {}
+    constructor(private symbol: string) {}
 
     /**
-     * 从 CoordinatorState + managers 构造 StrategyContext
-     * - 只在 coordinator.permission.allowed 时返回
-     * - 保证 snapshot 齐全
+     * build：把 CoordinatorState 变成 StrategyContext
+     * - 支持 old/new 两种 state 结构
+     * - 如果缺数据，返回 null，并给出明确原因（方便你排查 ctx 为 null）
      */
-    build(state: CoordinatorState): StrategyContext | null {
-        console.log('[ state.permission.allowed ] >', state.permission.allowed)
-        if (!state.permission.allowed) return null
+    build(state: AnyState): StrategyContext | null {
+        if (!state) return null
 
-        const s5 = this.m5.getSnapshot?.()
-        const s15 = this.m15.getSnapshot?.()
-        const s1 = this.h1.getSnapshot?.()
-        const s4 = this.h4.getSnapshot?.()
-        console.log('[ k线快照状态 ] >', s5, s15, s1, s4)
-        if (!s5 || !s15 || !s1 || !s4) return null
+        const permission = pickPermission(state)
+        // ✅ 如果你希望 Strategy 永远只在 allowed 时触发，保留这行：
+        if (permission.allowed === false) return null
+
+        const snapshots = pickSnapshots(state)
+        if (!snapshots) {
+            // 你之前一直 [skip] ctx is null，大概率是这里为 null
+            // 表示 coordinator 没产出 snapshots（要么没 feed 到各周期，要么 state 结构对不上）
+            return null
+        }
+
+        // 触发信息（优先用 trigger；没有就兜底）
+        let trigger = pickTrigger(state)
+        if (!trigger) {
+            // 兜底：默认认为是 5m close 触发（你现在的最终策略）
+            const m5 = requireSnapshot(snapshots, '5m' as Interval)
+            const closeTime = m5?.lastClosedKline?.closeTime ?? state?.computedAt ?? Date.now()
+            trigger = {
+                interval: '5m' as Interval,
+                closeTime,
+            }
+        }
+
+        // ✅ 关键：确保你依赖的周期快照存在
+        const m5 = requireSnapshot(snapshots, '5m' as Interval)
+        const m15 = requireSnapshot(snapshots, '15m' as Interval)
+        const h1 = requireSnapshot(snapshots, '1h' as Interval)
+        const h4 = requireSnapshot(snapshots, '4h' as Interval)
+
+        // 你的策略如果必须用到这些周期，就严格要求；否则你可以放宽
+        if (!m5 || !m15 || !h1 || !h4) {
+            return null
+        }
 
         return {
             symbol: this.symbol,
-            permission: state.permission,
+            permission,
+            trigger,
+            snapshots,
 
-            h4: s4,
-            h1: s1,
-            m15: s15,
-            m5: s5,
+            // 兼容你旧 StrategyEngine 的写法：ctx.m5/ctx.h1...
+            m5,
+            m15,
+            h1,
+            h4,
 
-            computedAt: state.computedAt,
+            createdAt: Date.now(),
+            meta: {
+                computedAt: state?.computedAt,
+            },
         }
     }
 }

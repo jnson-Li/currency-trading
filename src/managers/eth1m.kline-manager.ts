@@ -20,7 +20,7 @@ export class ETH1mKlineManager extends BaseKlineManager {
      * 1m 的历史回溯不宜太多
      * 防止内存压力 + 噪音过大
      */
-    protected maxHistory = 500 // 约 8 小时
+    protected maxHistory = 200 // 约 8 小时
 
     /**
      * 技术指标刷新策略
