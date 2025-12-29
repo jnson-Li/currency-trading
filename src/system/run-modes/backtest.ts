@@ -27,7 +27,12 @@ export async function startBacktestMode(
         // 这一步会触发：
         // BaseKlineManager → onClose → Coordinator
         managers['5m'].feedHistoricalKline(kline)
-        coordinator.on5mClosed(kline)
+        const m5 = managers['5m'].getSnapshot()
+        const m15 = managers['15m'].getSnapshot()
+        const h1 = managers['1h'].getSnapshot()
+        const h4 = managers['4h'].getSnapshot()
+
+        coordinator.on5mClosed({ '15m': m15, '1h': h1, '4h': h4, '5m': m5 })
     }
 
     console.log('[backtest] backtest finished')

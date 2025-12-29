@@ -51,6 +51,7 @@ export async function bootstrap(mode: RunMode) {
         console.log('[ ctx ] >', ctx)
         if (!ctx) return
         const signal = strategyEngine.evaluate(ctx)
+        console.log('[ 决策结果 ] >', signal)
         // if (signal) backtestOrLiveExecutor.onSignal(signal)
     })
 
