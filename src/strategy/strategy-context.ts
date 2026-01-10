@@ -10,7 +10,7 @@ export type StrategyPermission = {
 
 export type StrategyTrigger = {
     interval: Interval
-    closeTime: number
+    closeTime?: number
     // 可选：如果你要在策略里拿到触发的那根 kline
     kline?: any
 }
@@ -38,6 +38,7 @@ export type StrategyContext = {
     h1?: any
     h4?: any
 
-    createdAt: number
+    createdAt?: number
     meta?: Record<string, any>
+    lastClosed?: any
 }

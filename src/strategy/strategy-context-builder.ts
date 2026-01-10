@@ -57,7 +57,7 @@ export class StrategyContextBuilder {
      * - 支持 old/new 两种 state 结构
      * - 如果缺数据，返回 null，并给出明确原因（方便你排查 ctx 为 null）
      */
-    build(state: AnyState): StrategyContext | null {
+    build(state: StrategyContext): StrategyContext | null {
         if (!state) return null
 
         const permission = pickPermission(state)
@@ -76,7 +76,7 @@ export class StrategyContextBuilder {
         if (!trigger) {
             // 兜底：默认认为是 5m close 触发（你现在的最终策略）
             const m5 = requireSnapshot(snapshots, '5m' as Interval)
-            const closeTime = m5?.lastClosedKline?.closeTime ?? state?.computedAt ?? Date.now()
+            const closeTime = m5?.closeTime ?? state?.createdAt ?? Date.now()
             trigger = {
                 interval: '5m' as Interval,
                 closeTime,
@@ -100,15 +100,9 @@ export class StrategyContextBuilder {
             trigger,
             snapshots,
 
-            // 兼容你旧 StrategyEngine 的写法：ctx.m5/ctx.h1...
-            m5,
-            m15,
-            h1,
-            h4,
-
             createdAt: Date.now(),
             meta: {
-                computedAt: state?.computedAt,
+                computedAt: state?.createdAt,
             },
         }
     }

@@ -232,6 +232,8 @@ export abstract class BaseKlineManager {
     protected handleWSMessage(message: string) {
         const data = JSON.parse(message)
         const k = data?.k
+        // console.log('[ WSk线 ] >', data)
+
         if (!k || k.x !== true) return
 
         const kline = this.fromWsRaw(k)
