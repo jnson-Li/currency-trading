@@ -1,19 +1,6 @@
 // bind-events.ts
 import type { MultiTimeframeCoordinator } from '@/coordinators/multi-timeframe-coordinator.js'
-import type {
-    ETH5mKlineManager,
-    ETH15mKlineManager,
-    ETH1hKlineManager,
-    ETH4hKlineManager,
-} from '@/managers/index.js'
-
-type Managers = {
-    m5: ETH5mKlineManager
-    m15: ETH15mKlineManager
-    h1: ETH1hKlineManager
-    h4: ETH4hKlineManager
-}
-
+import type { Managers } from '@/types/market.js'
 /**
  * 事件绑定（最终版）
  *

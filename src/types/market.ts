@@ -103,3 +103,17 @@ export interface KlineSnapshot {
 
     atr14?: number
 }
+
+import type {
+    ETH5mKlineManager,
+    ETH15mKlineManager,
+    ETH1hKlineManager,
+    ETH4hKlineManager,
+} from '@/managers/index.js'
+
+export type Managers = {
+    m5: ETH5mKlineManager
+    m15: ETH15mKlineManager
+    h1: ETH1hKlineManager
+    h4: ETH4hKlineManager
+}

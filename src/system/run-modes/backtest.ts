@@ -3,14 +3,14 @@ import { HistoricalDataStore } from '@/historical/HistoricalDataStore.js'
 import type { Kline } from '@/types/market.js'
 import { getLast6MonthsWindow } from '@/backtest/time-window.js'
 import type { BaseKlineManager } from '@/managers/base-kline-manager.js'
-import type { Interval } from '@/types/market.js'
+import type { Managers } from '@/types/market.js'
 import { MultiTimeframeCoordinator } from '@/coordinators/multi-timeframe-coordinator.js'
 /**
  * 回测模式
  * 用 for-loop 重放历史 K 线
  */
 export async function startBacktestMode(
-    managers: Record<Interval, BaseKlineManager>,
+    managers: Managers,
     coordinator: MultiTimeframeCoordinator
 ) {
     console.log('[backtest] loading historical klines')
@@ -26,8 +26,9 @@ export async function startBacktestMode(
     for (const kline of klines) {
         // 这一步会触发：
         // BaseKlineManager → onClose → Coordinator
-        managers['5m'].feedHistoricalKline(kline)
-        coordinator.on5mClosed(kline)
+        managers.m5.feedHistoricalKline(kline)
+        const getSnapshot5m = managers.m5.getSnapshot()
+        coordinator.on5mClosed({ '5m': getSnapshot5m })
     }
 
     console.log('[backtest] backtest finished')

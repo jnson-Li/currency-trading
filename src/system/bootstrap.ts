@@ -65,7 +65,7 @@ export async function bootstrap(mode: RunMode) {
 
     if (mode === 'backtest') {
         // 回测：不绑定事件
-        await startBacktestMode({ '5m': m5, '15m': m15, '1h': h1, '4h': h4 }, coordinator)
+        await startBacktestMode({ m5, m15, h1, h4 }, coordinator)
         return
     }
 }
