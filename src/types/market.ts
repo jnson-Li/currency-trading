@@ -35,15 +35,15 @@ export type BinanceRawKline = [
     number, // numberOfTrades
     string, // takerBuyBaseVolume
     string, // takerBuyQuoteVolume
-    string // ignore
+    string, // ignore
 ]
 
 export type BinanceRawKlines = BinanceRawKline[]
 
 // types/market.ts
 
-export type Trend = 'bull' | 'bear' | 'range'
-export type Structure = 'hh_hl' | 'lh_ll' | 'range'
+export type Trend = 'bull' | 'bear' | 'range' | null
+export type Structure = 'hh_hl' | 'lh_ll' | 'range' | null
 export type Momentum = 'up' | 'down'
 export type Volatility = 'low' | 'normal' | 'high'
 
@@ -72,37 +72,70 @@ export interface MidConfirmation {
 /**
  * ===== 核心 Snapshot =====
  */
-export interface KlineSnapshot {
+
+export interface BaseKlineSnapshot {
     symbol: string
     interval: Interval
     level: IntervalLevel
 
-    // ===== 最新 K 线 =====
-    lastOpen: number
-    lastHigh: number
-    lastLow: number
-    lastClose: number
-    lastVolume: number
-    closeTime: number
+    lastKline: Kline
 
-    // ===== 系统状态 =====
     ready: boolean
     cacheSize: number
     timeHealth: TimeHealth
     updatedAt: number
+}
 
-    // ===== 分析状态（可选）=====
+export interface AnalysisSnapshot {
     trend?: Trend
     structure?: Structure
-    volatility?: Volatility
-    momentum?: Momentum
-
-    // ===== 执行 / 确认层扩展 =====
-    entry?: EntrySignal // 5m
-    mid?: MidConfirmation // 15m
 
     atr14?: number
+    atrPct?: number
+
+    emaFast?: number
+    emaSlow?: number
+    ema21?: number
+    ema34?: number
+
+    swing?: {
+        lastHH?: number
+        lastHL?: number
+        lastLH?: number
+        lastLL?: number
+        high?: number
+        low?: number
+    }
+
+    lastStructureChangeAt?: number
 }
+
+export interface ExecutionSnapshot {
+    entry?: {
+        breakout?: { long: boolean; short: boolean }
+        pullback?: { long: boolean; short: boolean }
+    }
+
+    atrPct?: number
+    wickRatio?: number
+    bodyRatio?: number
+
+    pending?: {
+        structure: Structure
+        count: number
+    }
+
+    legs?: {
+        impulseAvg?: number
+        pullbackAvg?: number
+    }
+
+    volSMA?: number
+}
+
+export interface KlineSnapshotData extends BaseKlineSnapshot, AnalysisSnapshot, ExecutionSnapshot {}
+
+export type KlineSnapshot = KlineSnapshotData | null
 
 import type {
     ETH5mKlineManager,

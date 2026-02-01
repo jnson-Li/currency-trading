@@ -1,48 +1,30 @@
 import { BaseKlineManager } from './base-kline-manager.js'
 import { Kline } from '@/types/market.js'
+import { calcEMA, calcATR } from '@/utils/ema.js'
 
-function calcEMA(values: number[], period: number): number | null {
-    if (values.length < period) return null
-    const k = 2 / (period + 1)
-    let ema = values.slice(0, period).reduce((a, b) => a + b) / period
-    for (let i = period; i < values.length; i++) {
-        ema = values[i] * k + ema * (1 - k)
-    }
-    return ema
-}
+/* ================== Utils ================== */
 
-function calcATR(klines: Kline[], period: number): number | null {
-    if (klines.length < period + 1) return null
-    const trs: number[] = []
-    for (let i = klines.length - period; i < klines.length; i++) {
-        const cur = klines[i]
-        const prev = klines[i - 1]
-        const tr = Math.max(
-            cur.high - cur.low,
-            Math.abs(cur.high - prev.close),
-            Math.abs(cur.low - prev.close)
-        )
-        trs.push(tr)
-    }
-    return trs.reduce((a, b) => a + b, 0) / trs.length
-}
-
-function findRecentSwing(klines: Kline[], lookback = 3): { high?: number; low?: number } {
+/** 识别 swing high / low（返回 index） */
+function detectSwingIndex(
+    klines: Kline[],
+    lookback = 3,
+): { highIndex?: number; lowIndex?: number } {
     for (let i = klines.length - lookback - 1; i >= lookback; i--) {
-        const high = klines[i].high
-        const low = klines[i].low
+        const cur = klines[i]
         const window = klines.slice(i - lookback, i + lookback + 1)
-        const isHigh = window.every((k) => high >= k.high)
-        const isLow = window.every((k) => low <= k.low)
+        const isHigh = window.every((k) => cur.high >= k.high)
+        const isLow = window.every((k) => cur.low <= k.low)
         if (isHigh || isLow) {
             return {
-                high: isHigh ? high : undefined,
-                low: isLow ? low : undefined,
+                highIndex: isHigh ? i : undefined,
+                lowIndex: isLow ? i : undefined,
             }
         }
     }
     return {}
 }
+
+/* ================== Manager ================== */
 
 export class ETH5mKlineManager extends BaseKlineManager {
     protected readonly SYMBOL = 'ETHUSDT'
@@ -51,79 +33,118 @@ export class ETH5mKlineManager extends BaseKlineManager {
     protected readonly CACHE_LIMIT = 500
     protected readonly LOG_PREFIX = 'ETH 5m'
 
+    // indicators
     protected emaFast?: number
     protected emaSlow?: number
     protected atr14?: number
+    protected atrPct?: number
+    protected volSMA?: number
+
+    // swing structure
     protected lastSwingHigh?: number
     protected lastSwingLow?: number
 
+    // entry flags
     protected breakoutSignal = { long: false, short: false }
     protected pullbackSignal = { long: false, short: false }
 
     protected getExtraSnapshot() {
+        if (!this.lastKline) return null
+        const last = this.lastKline
+
+        const body = Math.abs(last.close - last.open)
+        const range = Math.max(1e-9, last.high - last.low)
+        const wickRatio =
+            (last.high -
+                Math.max(last.open, last.close) +
+                (Math.min(last.open, last.close) - last.low)) /
+            range
+
         return {
-            entry: {
-                breakout: this.breakoutSignal,
-                pullback: this.pullbackSignal,
-            },
-            atr14: this.atr14,
             emaFast: this.emaFast,
             emaSlow: this.emaSlow,
+
+            atr14: this.atr14,
+            atrPct: this.atrPct,
+            volSMA: this.volSMA,
+
+            wickRatio,
+
             swing: {
                 high: this.lastSwingHigh,
                 low: this.lastSwingLow,
             },
+
+            entry: {
+                breakout: this.breakoutSignal,
+                pullback: this.pullbackSignal,
+            },
         }
+    }
+    private calcVolumeSMA(period = 20): number | undefined {
+        if (this.klines.length < period) return undefined
+        const vols = this.klines.slice(-period).map((k) => k.volume)
+        const sum = vols.reduce((a, b) => a + b, 0)
+        return sum / vols.length
     }
 
     protected afterAnalysis(k: Kline) {
-        // console.log('[ETH 5m closed]', new Date(k.closeTime).toISOString(), k.close)
-        this.updateEntrySignals()
+        this.updateSignals()
     }
 
-    private updateEntrySignals() {
+    private updateSignals() {
+        if (this.klines.length < 30) return
+
         const closes = this.klines.map((k) => k.close)
+        const last = this.klines[this.klines.length - 1]
 
         this.emaFast = calcEMA(closes, 9) ?? undefined
         this.emaSlow = calcEMA(closes, 21) ?? undefined
         this.atr14 = calcATR(this.klines, 14) ?? undefined
+        this.atrPct = this.atr14 && last.close ? this.atr14 / last.close : undefined
 
-        // 默认清空
         this.breakoutSignal = { long: false, short: false }
         this.pullbackSignal = { long: false, short: false }
 
         if (!this.emaFast || !this.emaSlow) return
 
-        const { high, low } = findRecentSwing(this.klines, 3)
-        if (high != null) this.lastSwingHigh = high
-        if (low != null) this.lastSwingLow = low
+        // ===== swing detection =====
+        const { highIndex, lowIndex } = detectSwingIndex(this.klines, 3)
+        if (highIndex != null) this.lastSwingHigh = this.klines[highIndex].high
+        if (lowIndex != null) this.lastSwingLow = this.klines[lowIndex].low
 
-        const lastClose = closes[closes.length - 1]
+        const lastClose = last.close
 
-        // ===== 多头信号 =====
+        // ===== bias =====
         const longBias = this.emaFast > this.emaSlow
-        if (longBias && this.lastSwingHigh != null && lastClose > this.lastSwingHigh) {
+        const shortBias = this.emaFast < this.emaSlow
+        this.volSMA = this.calcVolumeSMA(20)
+
+        // ===== breakout =====
+        if (longBias && this.lastSwingHigh && lastClose > this.lastSwingHigh) {
             this.breakoutSignal.long = true
         }
+        if (shortBias && this.lastSwingLow && lastClose < this.lastSwingLow) {
+            this.breakoutSignal.short = true
+        }
+
+        // ===== pullback（收紧条件）=====
         if (
             longBias &&
-            this.lastSwingLow != null &&
-            lastClose > this.emaSlow &&
-            lastClose < this.emaFast
+            this.lastSwingLow &&
+            lastClose > this.lastSwingLow &&
+            lastClose < this.emaFast &&
+            lastClose > this.emaSlow
         ) {
             this.pullbackSignal.long = true
         }
 
-        // ===== 空头信号（对称）=====
-        const shortBias = this.emaFast < this.emaSlow
-        if (shortBias && this.lastSwingLow != null && lastClose < this.lastSwingLow) {
-            this.breakoutSignal.short = true
-        }
         if (
             shortBias &&
-            this.lastSwingHigh != null &&
-            lastClose < this.emaSlow &&
-            lastClose > this.emaFast
+            this.lastSwingHigh &&
+            lastClose < this.lastSwingHigh &&
+            lastClose > this.emaFast &&
+            lastClose < this.emaSlow
         ) {
             this.pullbackSignal.short = true
         }

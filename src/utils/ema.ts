@@ -1,4 +1,6 @@
 // utils/ema.ts
+import { Kline } from '@/types/market.js'
+
 export function calcEMA(values: number[], period: number): number | null {
     if (values.length < period) return null
 
@@ -10,4 +12,19 @@ export function calcEMA(values: number[], period: number): number | null {
     }
 
     return ema
+}
+export function calcATR(klines: Kline[], period: number): number | null {
+    if (klines.length < period + 1) return null
+    let sum = 0
+    for (let i = klines.length - period; i < klines.length; i++) {
+        const cur = klines[i]
+        const prev = klines[i - 1]
+        const tr = Math.max(
+            cur.high - cur.low,
+            Math.abs(cur.high - prev.close),
+            Math.abs(cur.low - prev.close),
+        )
+        sum += tr
+    }
+    return sum / period
 }

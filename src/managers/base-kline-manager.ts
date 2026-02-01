@@ -111,6 +111,7 @@ export abstract class BaseKlineManager {
             })
 
             this.trimCache()
+            this.updateAnalysis()
         } finally {
             this.syncing = false
         }
@@ -313,7 +314,7 @@ export abstract class BaseKlineManager {
             if (k.closeTime < this.lastCloseTime) {
                 console.error(
                     `[${this.LOG_PREFIX}] kline time rollback`,
-                    new Date(k.closeTime).toISOString()
+                    new Date(k.closeTime).toISOString(),
                 )
 
                 this.timeHealth = 'broken'
@@ -328,7 +329,7 @@ export abstract class BaseKlineManager {
             if (delta >= expectedStep * 2) {
                 console.warn(
                     `[${this.LOG_PREFIX}] kline gap detected`,
-                    `gap=${delta / expectedStep}`
+                    `gap=${delta / expectedStep}`,
                 )
 
                 this.timeHealth = 'warning'
@@ -358,11 +359,11 @@ export abstract class BaseKlineManager {
         }
     }
 
-    protected getExtraSnapshot(): Record<string, any> {
+    protected getExtraSnapshot(): Record<string, any> | null {
         return {}
     }
 
-    public getSnapshot(): KlineSnapshot | null {
+    public getSnapshot(): KlineSnapshot {
         if (!this.lastKline) return null
 
         return {
@@ -370,12 +371,7 @@ export abstract class BaseKlineManager {
             interval: this.INTERVAL as any,
             level: INTERVAL_LEVEL_MAP[this.INTERVAL],
 
-            lastOpen: this.lastKline.open,
-            lastHigh: this.lastKline.high,
-            lastLow: this.lastKline.low,
-            lastClose: this.lastKline.close,
-            lastVolume: this.lastKline.volume,
-            closeTime: this.lastKline.closeTime,
+            lastKline: this.lastKline,
 
             ready: this.ready,
             cacheSize: this.klines.length,
@@ -384,7 +380,7 @@ export abstract class BaseKlineManager {
             trend: this.trend,
             structure: this.structure,
 
-            ...this.getExtraSnapshot(), // 👈 5m / 15m 扩展
+            ...this.getExtraSnapshot(), //  5m / 15m 扩展
 
             updatedAt: Date.now(),
         }

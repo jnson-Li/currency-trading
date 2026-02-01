@@ -1,11 +1,12 @@
 // strategy/strategy-context.ts
-import type { Interval } from '@/types/market.js'
+import type { Interval, KlineSnapshot } from '@/types/market.js'
 
 export type StrategyPermission = {
     allowed: boolean
     reason?: string
     // 你如果有更复杂的 gate 信息也可以加在这里
     warnings?: string[]
+    detail?: string
 }
 
 export type StrategyTrigger = {
@@ -30,13 +31,13 @@ export type StrategyContext = {
     trigger: StrategyTrigger
 
     // 各周期快照（m5 / m15 / h1 / h4）
-    snapshots: StrategySnapshots
+    // snapshots: StrategySnapshots
 
     // 为了兼容你旧逻辑，直接把常用字段平铺出来（可选）
-    m5?: any
-    m15?: any
-    h1?: any
-    h4?: any
+    m5: KlineSnapshot | null
+    m15: KlineSnapshot | null
+    h1: KlineSnapshot | null
+    h4: KlineSnapshot | null
 
     createdAt?: number
     meta?: Record<string, any>

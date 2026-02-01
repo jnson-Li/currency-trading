@@ -98,7 +98,10 @@ export class StrategyContextBuilder {
             symbol: this.symbol,
             permission,
             trigger,
-            snapshots,
+            m5,
+            m15,
+            h1,
+            h4,
 
             createdAt: Date.now(),
             meta: {
