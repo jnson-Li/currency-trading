@@ -93,6 +93,8 @@ export async function bootstrap(
         execAccepted: 0,
         execRejected: 0,
         errors: 0,
+        evalCount: 0,
+        executed: 0,
     }
 
     const rejectStats = new RejectStatsFile({
@@ -109,9 +111,6 @@ export async function bootstrap(
         samplePerKey: 2,
     })
     rejectStats.start()
-
-    // 执行串行化：避免持仓/下单状态竞争（哪怕 5m 一次 trigger 也建议保留）
-    let execChain: Promise<void> = Promise.resolve()
 
     // 降噪：只在 decision 真变化时打印
     let lastDecisionK: string | null = null
@@ -133,72 +132,105 @@ export async function bootstrap(
         }
     })
 
-    // ✅ 你 coordinator 的 onTrigger 也传 StrategyContext（且只在 allowed 时触发）
+    function sleep(ms: number) {
+        return new Promise((r) => setTimeout(r, ms))
+    }
+
+    /** 串行执行队列：保证所有执行任务按顺序一个个跑，并支持 drain(超时等待收尾) */
+    function createSerialQueue() {
+        let accepting = true
+        let chain: Promise<void> = Promise.resolve()
+
+        return {
+            /** stop 之后不再接受新任务 */
+            close() {
+                accepting = false
+            },
+
+            /** 是否还接受新任务 */
+            get accepting() {
+                return accepting
+            },
+
+            /** 串行追加任务（不抛出到外层，保证链不断） */
+            enqueue(task: () => Promise<void> | void) {
+                if (!accepting) return
+
+                chain = chain
+                    .then(async () => {
+                        await task()
+                    })
+                    .catch((e) => {
+                        // 吞掉错误，保证后续任务还能继续跑
+                        console.error('[serial-queue] task error:', e)
+                    })
+            },
+
+            /** 等待当前队列跑完（带超时） */
+            async drain(timeoutMs = 10_000) {
+                // 关键点：stop 之后我们不会再 enqueue，所以 chain 会稳定地收敛
+                const done = chain.then(() => true)
+                const timeout = sleep(timeoutMs).then(() => false)
+                return (await Promise.race([done, timeout])) as boolean
+            },
+        }
+    }
+
+    const queue = createSerialQueue()
+
     coordinator.onTrigger((ctx: StrategyContext) => {
-        metrics.triggerEvents += 1
-        metrics.allowedTriggers += 1
+        // stop 后不再接任务（否则 drain 永远等不完）
+        if (!queue.accepting) return
 
-        // 这里不 await（避免把 coordinator 事件链堵死），但我们把执行串行化
-        execChain = execChain
-            .then(async () => {
-                try {
-                    // 额外保险：ctx 是否完整（防未来改动/事件缺失）
-                    if (!ctx?.m5?.lastKline) return
+        queue.enqueue(async () => {
+            // ✅ 额外保险：ctx 是否完整
+            if (!ctx?.m5?.lastKline) return
+            metrics.evalCount += 1
+            if (metrics.evalCount % 12 === 0) {
+                console.log('[metrics]', {
+                    evalCount: metrics.evalCount,
+                    signals: metrics.signals,
+                    executed: metrics.executed,
+                    errors: metrics.errors,
+                    lastCloseTime: ctx.m5?.lastKline?.closeTime,
+                })
+            }
+            // === evaluate ===
+            const signal = strategyEngine.evaluate(ctx)
+            if (!signal) {
+                rejectStats.record({
+                    signalEmitted: false,
+                    reject: strategyEngine.lastReject,
+                    meta: {
+                        symbol: ctx.symbol,
+                        closeTime: ctx.m5.lastKline.closeTime,
+                    },
+                })
+                return
+            }
 
-                    // === evaluate ===
-                    const signal = strategyEngine.evaluate(ctx)
-
-                    if (!signal) {
-                        rejectStats.record({
-                            signalEmitted: false,
-                            reject: strategyEngine.lastReject,
-                            meta: {
-                                symbol: ctx.symbol,
-                                closeTime: ctx.m5?.lastKline?.closeTime,
-                            },
-                        })
-                        return
-                    }
-
-                    rejectStats.record({
-                        signalEmitted: true,
-                        meta: {
-                            symbol: ctx.symbol,
-                            closeTime: ctx.m5?.lastKline?.closeTime,
-                            side: signal.side,
-                            confidence: signal.confidence,
-                        },
-                    })
-
-                    console.log('[signal]', signal)
-                    metrics.signals += 1
-
-                    // === 执行（Noop/Paper/Shadow/Testnet/Live）===
-                    metrics.execCalls += 1
-                    const res = await executor.execute(signal, ctx)
-                    if (res.accepted) metrics.execAccepted += 1
-                    else metrics.execRejected += 1
-
-                    // 摘要日志：不要 dump 全 ctx
-                    console.info('[signal]', {
-                        closeTime: ctx.trigger?.closeTime,
-                        symbol: signal.symbol,
-                        side: signal.side,
-                        confidence: signal.confidence,
-                        reason: signal.reason,
-                        price: signal.price,
-                    })
-                    console.info('[exec]', res)
-                } catch (e) {
-                    metrics.errors += 1
-                    console.error('[onTrigger] error:', e)
-                }
+            rejectStats.record({
+                signalEmitted: true,
+                meta: {
+                    symbol: ctx.symbol,
+                    closeTime: ctx.m5.lastKline.closeTime,
+                    side: signal.side,
+                    confidence: signal.confidence,
+                },
             })
-            .catch((e) => {
-                // 兜底：保证链不断
+
+            // === execute（paper/shadow/live）===
+            try {
+                metrics.signals += 1
+                const res: ExecutionResult = await executor.execute(signal, ctx)
+                metrics.executed += 1
+                // 你想的话可以少量打印
+                console.log('[exec]', res)
+            } catch (e) {
                 metrics.errors += 1
-                console.error('[execChain] error:', e)
-            })
+                console.error('[execute] error:', e)
+            }
+        })
     })
 
     // blockedTriggers 统计：你现在 coordinator 只在 allowed 时 emit trigger，
@@ -207,36 +239,44 @@ export async function bootstrap(
         if (ctx.permission?.allowed === false) metrics.blockedTriggers += 1
     })
 
-    // metrics 定频输出（长期跑必备）
-    const metricsInterval = setInterval(() => {
-        console.info('[metrics]', {
-            ts: new Date().toISOString(),
-            mode,
-            ...metrics,
-        })
-    }, opts?.metricsIntervalMs ?? 60_000)
+    const metricsTimer = setInterval(
+        () => {
+            console.log('[heartbeat]', {
+                signals: metrics.signals,
+                executed: metrics.executed,
+                errors: metrics.errors,
+            })
+        },
+        60 * 60 * 1000,
+    ) // 1小时
+    metricsTimer.unref?.()
 
-    // 优雅退出
     let stopping = false
+
     const stop = async () => {
         if (stopping) return
         stopping = true
+
+        console.warn('[bootstrap] stopping...')
+
+        // 1) 先停止接受新任务（最关键）
+        queue.close()
+
+        // 2) flush 统计（落地文件）
         rejectStats.flush('manual')
         rejectStats.stop()
 
-        console.warn('[bootstrap] stopping...')
-        clearInterval(metricsInterval)
+        // 3) 关闭 metrics 心跳（如果你保留）
+        if (metricsTimer) clearInterval(metricsTimer)
 
-        // 等待执行链收尾（给一个最大等待时间，避免永远卡住）
-        const start = Date.now()
-        while (true) {
-            const done = await Promise.race([
-                execChain.then(() => true),
-                sleep(200).then(() => false),
-            ])
-            if (done) break
-            if (Date.now() - start > 10_000) break
+        // 4) 等队列收尾（最大等待时间）
+        const finished = await queue.drain(10_000)
+        if (!finished) {
+            console.warn('[bootstrap] stop: drain timeout (10s), force exit soon')
         }
+
+        // 5) 如果 live 模式里有 ws/轮询，最好在这里 stop（看你 startLiveMode 有没有返回 stop）
+        // await liveHandle?.stop?.()
 
         console.warn('[bootstrap] stopped')
     }
