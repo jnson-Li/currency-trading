@@ -1,131 +1,147 @@
-import { KlineSnapshot, Trend } from '@/types/market.js'
-type GateResult = { pass: true } | { pass: false; code: string; detail?: any }
+// strategy/gates.ts
+import type { StrategyContext } from '@/strategy/strategy-context.js'
+import type { TradeSide } from '@/types/strategy.js'
+import type { KlineSnapshot, KlineSnapshotData } from '@/types/market.js'
 
-const PASS: GateResult = { pass: true }
-const FAIL = (code: string, detail?: any): GateResult => ({ pass: false, code, detail })
+export type GateResult = { pass: true } | { pass: false; code: string; meta?: any }
 
-export function gateHighVolatility(m5: KlineSnapshot): GateResult {
+export const PASS: GateResult = { pass: true }
+export const FAIL = (code: string, meta?: any): GateResult => ({ pass: false, code, meta })
+
+/**
+ * gate 1：趋势冲突 / 结构冲突 / 切换冷却
+ * ✅ now 必须用 m5.lastKline.closeTime（由 StrategyEngine 传入）
+ */
+export function gateTrendSwitch(ctx: StrategyContext, side: TradeSide, now: number): GateResult {
+    const h4: KlineSnapshot = ctx.h4
+    const h1: KlineSnapshot = ctx.h1
+    const m15: KlineSnapshot = ctx.m15
+
+    // 1) 方向冲突（4h）
+    if (side === 'long' && h4?.trend === 'bear')
+        return FAIL('SWITCH_H4_CONFLICT', { h4Trend: h4?.trend })
+    if (side === 'short' && h4?.trend === 'bull')
+        return FAIL('SWITCH_H4_CONFLICT', { h4Trend: h4?.trend })
+
+    // 2) 结构冲突（1h）
+    // 这里可以比 “轻确认”更严格一点（你要的：把严格留在 gate）
+    if (side === 'long' && h1?.structure === 'lh_ll')
+        return FAIL('SWITCH_H1_STRUCTURE_CONFLICT', { h1Structure: h1?.structure })
+    if (side === 'short' && h1?.structure === 'hh_hl')
+        return FAIL('SWITCH_H1_STRUCTURE_CONFLICT', { h1Structure: h1?.structure })
+
+    // 3) 15m 冲突（可选更严格）
+    if (side === 'long') {
+        if (m15?.trend === 'bear')
+            return FAIL('SWITCH_M15_TREND_CONFLICT', { m15Trend: m15?.trend })
+        if (m15?.structure === 'lh_ll')
+            return FAIL('SWITCH_M15_STRUCTURE_CONFLICT', { m15Structure: m15?.structure })
+    } else {
+        if (m15?.trend === 'bull')
+            return FAIL('SWITCH_M15_TREND_CONFLICT', { m15Trend: m15?.trend })
+        if (m15?.structure === 'hh_hl')
+            return FAIL('SWITCH_M15_STRUCTURE_CONFLICT', { m15Structure: m15?.structure })
+    }
+
+    // 4) 冷却：结构刚切换的一段时间不做
+    // 你之前用 Date.now()，这里统一改为 now（m5 closeTime）
+    const cooldownMs = 30 * 60 * 1000 // 30min（你可调）
+    const h1ChangedAt = (h1?.lastStructureChangeAt ?? null) as number | null
+    if (h1ChangedAt != null && now - h1ChangedAt < cooldownMs) {
+        return FAIL('SWITCH_COOLDOWN_H1', { h1ChangedAt, cooldownMs, deltaMs: now - h1ChangedAt })
+    }
+
+    const m15ChangedAt = (m15?.lastStructureChangeAt ?? null) as number | null
+    if (m15ChangedAt != null && now - m15ChangedAt < Math.min(cooldownMs, 15 * 60 * 1000)) {
+        return FAIL('SWITCH_COOLDOWN_M15', {
+            m15ChangedAt,
+            cooldownMs,
+            deltaMs: now - m15ChangedAt,
+        })
+    }
+
+    return PASS
+}
+
+/**
+ * gate 2：趋势衰竭（末端不追）
+ * ✅ now 用 m5 closeTime
+ */
+export function gateTrendExhaustion(
+    ctx: StrategyContext,
+    side: TradeSide,
+    now: number,
+): GateResult {
+    const h1: KlineSnapshot = ctx.h1
+    if (!h1) return PASS
+
+    const legs = h1?.legs
+    const swing = h1?.swing
+
+    // 例：如果你有这些字段，就做衰竭过滤；没有就 PASS
+    const impulseAvg = legs?.impulseAvg
+    const pullbackAvg = legs?.pullbackAvg
+
+    // 1) 推进/回撤比异常：末端“拉不动”
+    if (impulseAvg != null && pullbackAvg != null && pullbackAvg > 0) {
+        const ratio = impulseAvg / pullbackAvg
+        // ratio 太低：推进弱、回撤强，容易衰竭（阈值你可调）
+        if (ratio < 1.25) {
+            return FAIL('EXH_LEGS_WEAK', { ratio, impulseAvg, pullbackAvg, now })
+        }
+    }
+
+    // 2) 结构破坏迹象（示例）：多头时 lastHL 被跌破、空头时 lastLH 被突破（你字段兼容就行）
+    const lastHL = swing?.lastHL
+    const lastLH = swing?.lastLH
+    const m5Close = ctx.m5?.lastKline?.close
+
+    if (m5Close != null) {
+        if (side === 'long' && lastHL != null && m5Close < lastHL) {
+            return FAIL('EXH_BREAK_LASTHL', { m5Close, lastHL })
+        }
+        if (side === 'short' && lastLH != null && m5Close > lastLH) {
+            return FAIL('EXH_BREAK_LASTLH', { m5Close, lastLH })
+        }
+    }
+
+    return PASS
+}
+
+/**
+ * gate 3：高波动过滤（ATR% / 针 / 异常放量）
+ * ✅ now 用 m5 closeTime（主要用于 meta/一致性）
+ */
+export function gateHighVolatility(ctx: StrategyContext, now: number): GateResult {
+    const m5: KlineSnapshot = ctx.m5
     const k = m5?.lastKline
     const close = k?.close ?? 0
     if (!k || !close) return PASS
 
-    // 1) ATR% 过大：比如 5m ATR 占价格 > 0.9% 就不做（你可调）
+    // 1) ATR% 过大（你字段兼容已做，这里就直接用）
     const atrPct = m5.atrPct
     if (atrPct != null && atrPct > 0.009) {
-        return FAIL('VOL_ATR_TOO_HIGH', { atrPct })
+        return FAIL('VOL_ATR_TOO_HIGH', { atrPct, now })
     }
 
-    // 2) 影线过长：一根针扎太夸张，容易扫损
+    // 2) 影线过长（针）
     const body = Math.abs(k.close - k.open)
     const range = Math.max(1e-9, k.high - k.low)
     const upperWick = k.high - Math.max(k.open, k.close)
     const lowerWick = Math.min(k.open, k.close) - k.low
 
-    // “针”定义：影线占比很高且实体很小（你可调）
     const bodyRatio = body / range
     const wickRatio = (upperWick + lowerWick) / range
     if (bodyRatio < 0.22 && wickRatio > 0.78) {
-        return FAIL('VOL_WICK_SPIKE', { bodyRatio, wickRatio })
+        return FAIL('VOL_WICK_SPIKE', { bodyRatio, wickRatio, now })
     }
 
-    // 3) 异常放量：通常对应新闻/强制平仓潮，结构信号极易失真
-    if (m5.lastKline.volume != null && m5.volSMA != null && m5.volSMA > 0) {
-        const v = m5.lastKline.volume / m5.volSMA
-        if (v > 3.2) return FAIL('VOL_VOLUME_SPIKE', { v })
-    }
-
-    return PASS
-}
-
-export function gateTrendExhaustion(
-    h4: KlineSnapshot,
-    h1: KlineSnapshot,
-    side: 'long' | 'short',
-): GateResult {
-    const s = h1
-    if (!s) return PASS
-
-    // 1) 推进/回调比：推进均值 <= 回调均值 → 趋势很可能衰竭/转震荡
-    const impulse = s.legs?.impulseAvg
-    const pullback = s.legs?.pullbackAvg
-    if (impulse != null && pullback != null && impulse > 0 && pullback > 0) {
-        const ratio = impulse / pullback
-        // 比如 ratio < 1.05 就当作“推不动”（你可调：1.0~1.3）
-        if (ratio < 1.05) {
-            return FAIL('EXH_IMPULSE_WEAK', { ratio, impulse, pullback })
-        }
-    }
-
-    // 2) 回调过深：在多头里，回调接近/跌破关键 HL；空头同理
-    const lastHL = s.swing?.lastHL
-    const lastLH = s.swing?.lastLH
-    const lastClose = s.lastKline?.close ?? 0
-
-    if (side === 'long' && lastHL != null && lastClose) {
-        // close 距离 HL 太近（说明结构“摇摇欲坠”）
-        const dist = (lastClose - lastHL) / lastClose
-        if (dist < 0.0015) {
-            // 0.15% 以内，你可调
-            return FAIL('EXH_TOO_CLOSE_TO_HL', { dist, lastHL, lastClose })
-        }
-    }
-    if (side === 'short' && lastLH != null && lastClose) {
-        const dist = (lastLH - lastClose) / lastClose
-        if (dist < 0.0015) {
-            return FAIL('EXH_TOO_CLOSE_TO_LH', { dist, lastLH, lastClose })
-        }
-    }
-
-    // 3) 高周期动能同步衰弱（可选）：如果你有 h4.legs 也可加同样规则
-    const h4imp = h4?.legs?.impulseAvg
-    const h4pb = h4?.legs?.pullbackAvg
-    if (h4imp != null && h4pb != null && h4imp > 0 && h4pb > 0) {
-        const h4ratio = h4imp / h4pb
-        if (h4ratio < 1.03) {
-            return FAIL('EXH_H4_WEAK', { h4ratio, h4imp, h4pb })
-        }
-    }
-
-    return PASS
-}
-
-export function gateTrendSwitch(ctx: {
-    h4: KlineSnapshot
-    h1: KlineSnapshot
-    m15: KlineSnapshot
-    side: 'long' | 'short'
-}): GateResult {
-    const { h4, h1, m15, side } = ctx
-
-    // 1) 多周期冲突：方向相反直接不做
-    // 你现在的策略是：4h 定方向，1h/15m 必须顺同方向
-    // 这里加一个更严格的冲突判定：任意一个明确反向 → 不做
-    const wantTrend: Trend = side === 'long' ? 'bull' : 'bear'
-    const opposite: Trend = side === 'long' ? 'bear' : 'bull'
-
-    if (h1?.trend === opposite || m15?.trend === opposite) {
-        return FAIL('SWITCH_TREND_CONFLICT', { h1Trend: h1?.trend, m15Trend: m15?.trend })
-    }
-
-    // 2) 结构冲突：1h 或 15m 给出了反向结构
-    const wantStruct = side === 'long' ? 'hh_hl' : 'lh_ll'
-    const oppStruct = side === 'long' ? 'lh_ll' : 'hh_hl'
-
-    if (h1?.structure === oppStruct || m15?.structure === oppStruct) {
-        return FAIL('SWITCH_STRUCTURE_CONFLICT', {
-            h1Struct: h1?.structure,
-            m15Struct: m15?.structure,
-        })
-    }
-
-    // 3) 冷却期：结构刚变更不交易（例如 1h 结构刚变化 < 2 根 1h K 线）
-    // 你可以在结构识别模块里每次结构从 hh_hl -> lh_ll 时写 lastStructureChangeAt
-    const now = Date.now()
-    const cooldownMs = 2 * 60 * 60 * 1000 // 2h 冷却，你可调：1h~6h
-
-    const h1ChangedAt = h1?.lastStructureChangeAt
-    if (h1ChangedAt && now - h1ChangedAt < cooldownMs) {
-        return FAIL('SWITCH_COOLDOWN_H1', { minutes: Math.floor((now - h1ChangedAt) / 60000) })
+    // 3) 异常放量
+    const volume = k.volume
+    const volSMA = m5.volSMA
+    if (volume != null && volSMA != null && volSMA > 0) {
+        const v = volume / volSMA
+        if (v > 3.2) return FAIL('VOL_VOLUME_SPIKE', { v, now })
     }
 
     return PASS

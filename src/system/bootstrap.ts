@@ -11,7 +11,7 @@ import { startLiveMode } from './run-modes/live.js'
 import { startBacktestMode } from './run-modes/backtest.js'
 import { StrategyEngine } from '@/strategy/strategy-engine.js'
 import { ExecutionEngine, ExecutionResult } from '@/types/execution.js'
-
+import { RejectStatsFile } from '@/debug/reject-stats-file.js'
 // ✅ 你 coordinator 里 onTrigger / onDecisionChange 传出来的就是 StrategyContext
 import type { StrategyContext } from '@/strategy/strategy-context.js'
 import type { TradeSignal } from '@/types/strategy.js'
@@ -95,6 +95,21 @@ export async function bootstrap(
         errors: 0,
     }
 
+    const rejectStats = new RejectStatsFile({
+        eventFile: './data/reject/reject-events.jsonl',
+        summaryFile: './data/reject/reject-summary.jsonl',
+
+        // ✅ 你是 5m 才 evaluate，一小时 12 次
+        flushEveryNEvals: 12,
+
+        // ✅ 再加一个兜底：即便长时间无 eval（例如断流）也能定期落汇总
+        flushIntervalMs: 60 * 60 * 1000,
+
+        topN: 10,
+        samplePerKey: 2,
+    })
+    rejectStats.start()
+
     // 执行串行化：避免持仓/下单状态竞争（哪怕 5m 一次 trigger 也建议保留）
     let execChain: Promise<void> = Promise.resolve()
 
@@ -132,7 +147,30 @@ export async function bootstrap(
 
                     // === evaluate ===
                     const signal = strategyEngine.evaluate(ctx)
-                    if (!signal) return
+
+                    if (!signal) {
+                        rejectStats.record({
+                            signalEmitted: false,
+                            reject: strategyEngine.lastReject,
+                            meta: {
+                                symbol: ctx.symbol,
+                                closeTime: ctx.m5?.lastKline?.closeTime,
+                            },
+                        })
+                        return
+                    }
+
+                    rejectStats.record({
+                        signalEmitted: true,
+                        meta: {
+                            symbol: ctx.symbol,
+                            closeTime: ctx.m5?.lastKline?.closeTime,
+                            side: signal.side,
+                            confidence: signal.confidence,
+                        },
+                    })
+
+                    console.log('[signal]', signal)
                     metrics.signals += 1
 
                     // === 执行（Noop/Paper/Shadow/Testnet/Live）===
@@ -183,6 +221,8 @@ export async function bootstrap(
     const stop = async () => {
         if (stopping) return
         stopping = true
+        rejectStats.flush('manual')
+        rejectStats.stop()
 
         console.warn('[bootstrap] stopping...')
         clearInterval(metricsInterval)

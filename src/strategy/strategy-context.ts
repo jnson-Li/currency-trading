@@ -34,10 +34,10 @@ export type StrategyContext = {
     // snapshots: StrategySnapshots
 
     // 为了兼容你旧逻辑，直接把常用字段平铺出来（可选）
-    m5: KlineSnapshot | null
-    m15: KlineSnapshot | null
-    h1: KlineSnapshot | null
-    h4: KlineSnapshot | null
+    m5: KlineSnapshot
+    m15: KlineSnapshot
+    h1: KlineSnapshot
+    h4: KlineSnapshot
 
     createdAt?: number
     meta?: Record<string, any>
