@@ -4,7 +4,7 @@ import type { StrategyContext } from '@/strategy/strategy-context.js'
 export interface ExecutionResult {
     signalId: string
     accepted: boolean
-    reason?: string
+    reason: string
 
     symbol?: string
     side?: 'long' | 'short'

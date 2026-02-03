@@ -14,14 +14,14 @@ import { ExecutionEngine, ExecutionResult } from '@/types/execution.js'
 import { RejectStatsFile } from '@/debug/reject-stats-file.js'
 // ✅ 你 coordinator 里 onTrigger / onDecisionChange 传出来的就是 StrategyContext
 import type { StrategyContext } from '@/strategy/strategy-context.js'
-import type { TradeSignal } from '@/types/strategy.js'
+import type { TradeSignal, TradeSignalBase } from '@/types/strategy.js'
 
 export type RunMode = 'live' | 'backtest'
 
 /** ===== 执行引擎插槽：后续 Paper / Shadow / Testnet / Live 都实现这个接口即可 ===== */
 
 class NoopExecutionEngine implements ExecutionEngine {
-    async execute(signal: TradeSignal, ctx: StrategyContext): Promise<ExecutionResult> {
+    async execute(signal: TradeSignalBase, ctx: StrategyContext): Promise<ExecutionResult> {
         if (!signal) {
             return {
                 signalId: 'invalid_signal',
@@ -59,6 +59,7 @@ export async function bootstrap(
     },
 ) {
     console.log('[bootstrap] start with mode:', mode)
+    let liveHandle: { stop?: () => Promise<void> } | null = null
 
     const executor = opts?.executor ?? new NoopExecutionEngine()
 
@@ -276,7 +277,11 @@ export async function bootstrap(
         }
 
         // 5) 如果 live 模式里有 ws/轮询，最好在这里 stop（看你 startLiveMode 有没有返回 stop）
-        // await liveHandle?.stop?.()
+        try {
+            await liveHandle?.stop?.()
+        } catch (e) {
+            console.error('[bootstrap] live stop error:', e)
+        }
 
         console.warn('[bootstrap] stopped')
     }
@@ -292,7 +297,7 @@ export async function bootstrap(
     // 4️⃣ 按模式分流
     if (mode === 'live') {
         bindEvents({ m5, m15, h1, h4 }, coordinator)
-        await startLiveMode({ m5, m15, h1, h4 })
+        liveHandle = await startLiveMode({ m5, m15, h1, h4 })
         return { stop }
     }
 

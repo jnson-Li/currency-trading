@@ -2,6 +2,7 @@
 import type { TradeSignal, TradeSignalBase } from '@/types/strategy.js'
 import type { StrategyContext } from '@/strategy/strategy-context.js'
 import { ExecutionEngine, ExecutionResult, PaperExecutionConfig } from '@/types/execution.js'
+import { EXEC_REASON } from '@/execution/execution-reject-reasons.js'
 
 const defaultCfg: Required<Omit<PaperExecutionConfig, 'onResult'>> = {
     orderType: 'market',
@@ -54,7 +55,7 @@ export class PaperExecutionEngine implements ExecutionEngine {
         if (!marketPrice || !Number.isFinite(marketPrice)) {
             return this.finish(
                 startedAt,
-                { signalId, accepted: false, reason: 'NO_MARKET_PRICE', symbol, side },
+                { signalId, accepted: false, reason: EXEC_REASON.NO_MARKET_PRICE, symbol, side },
                 signal,
                 ctx,
             )
@@ -64,7 +65,14 @@ export class PaperExecutionEngine implements ExecutionEngine {
         if (this.cfg.rejectProb > 0 && this.cfg.rng() < this.cfg.rejectProb) {
             return this.finish(
                 startedAt,
-                { signalId, accepted: false, reason: 'SIM_REJECTED', symbol, side, marketPrice },
+                {
+                    signalId,
+                    accepted: false,
+                    reason: EXEC_REASON.EXCHANGE_REJECT,
+                    symbol,
+                    side,
+                    marketPrice,
+                },
                 signal,
                 ctx,
             )
@@ -78,7 +86,7 @@ export class PaperExecutionEngine implements ExecutionEngine {
                 {
                     signalId,
                     accepted: false,
-                    reason: 'SIM_TIMEOUT',
+                    reason: EXEC_REASON.EXEC_TIMEOUT,
                     symbol,
                     side,
                     marketPrice,
@@ -121,9 +129,9 @@ export class PaperExecutionEngine implements ExecutionEngine {
                     spreadPct: this.cfg.spreadPct,
                     openedAt: Date.now(),
                     latencyMs: latency,
+                    reason: EXEC_REASON.EXECUTED_MARKET,
                     meta: {
                         confidence: signal.confidence,
-                        reason: signal.reason,
                         model: 'paper_market',
                     },
                 },
@@ -153,7 +161,7 @@ export class PaperExecutionEngine implements ExecutionEngine {
                 {
                     signalId,
                     accepted: false,
-                    reason: 'LIMIT_NOT_FILLED',
+                    reason: EXEC_REASON.LIMIT_NOT_FILLED,
                     symbol,
                     side,
                     orderType,
@@ -192,6 +200,7 @@ export class PaperExecutionEngine implements ExecutionEngine {
                 spreadPct: this.cfg.spreadPct,
                 openedAt: Date.now(),
                 latencyMs: latency + limitRes.waitedMs,
+                reason: EXEC_REASON.EXECUTED_LIMIT,
                 meta: {
                     limitPrice,
                     waitedMs: limitRes.waitedMs,
