@@ -23,8 +23,9 @@ function calcATR(klines: Kline[], period: number): number | null {
 }
 
 export class ETH15mKlineManager extends BaseKlineManager {
-    protected readonly SYMBOL = 'ETHUSDT'
-    protected readonly INTERVAL = '15m'
+    constructor() {
+        super('ETHUSDT', '15m')
+    }
     protected readonly HTTP_LIMIT = 50
     protected readonly CACHE_LIMIT = 200
     protected readonly LOG_PREFIX = 'ETH 15m'

@@ -62,8 +62,9 @@ function calcLegStats(params: {
 }
 
 export class ETH4hKlineManager extends BaseKlineManager {
-    protected readonly SYMBOL = 'ETHUSDT'
-    protected readonly INTERVAL = '4h'
+    constructor() {
+        super('ETHUSDT', '4h')
+    }
     protected readonly HTTP_LIMIT = 100
     protected readonly CACHE_LIMIT = 200
     protected readonly LOG_PREFIX = 'ETH 4h'

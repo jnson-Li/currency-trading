@@ -15,7 +15,8 @@ import { RejectStatsFile } from '@/debug/reject-stats-file.js'
 // ✅ 你 coordinator 里 onTrigger / onDecisionChange 传出来的就是 StrategyContext
 import type { StrategyContext } from '@/strategy/strategy-context.js'
 import type { TradeSignal, TradeSignalBase } from '@/types/strategy.js'
-
+import { startWsHealthReporter } from '@/metrics/ws-health-reporter.js'
+import { registerWsHealthForManagers } from '@/metrics/register-ws-health.js'
 export type RunMode = 'live' | 'backtest'
 
 /** ===== 执行引擎插槽：后续 Paper / Shadow / Testnet / Live 都实现这个接口即可 ===== */
@@ -97,7 +98,17 @@ export async function bootstrap(
         evalCount: 0,
         executed: 0,
     }
-
+    const managers = {
+        '5m': m5,
+        '15m': m15,
+        '1h': h1,
+        '4h': h4,
+    }
+    // ⭐ 一次性注册
+    const wsHealthRegistry = registerWsHealthForManagers(managers, {
+        intervalMs: 3 * 60 * 60 * 1000, // 1 小时
+        outputDir: './data/ws',
+    })
     const rejectStats = new RejectStatsFile({
         eventFile: './data/reject/reject-events.jsonl',
         summaryFile: './data/reject/reject-summary.jsonl',
@@ -259,7 +270,7 @@ export async function bootstrap(
         stopping = true
 
         console.warn('[bootstrap] stopping...')
-
+        wsHealthRegistry.stopAll()
         // 1) 先停止接受新任务（最关键）
         queue.close()
 

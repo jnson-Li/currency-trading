@@ -11,7 +11,8 @@ import {
 } from '@/types/market.js'
 import { wsProxyAgent } from '@/infra/ws-proxy.js'
 import { intervalToMs } from '@/utils/interval.js'
-
+import { WsHealthCollector } from '@/metrics/ws-health-collector.js'
+import type { WsHealthSnapshot } from '@/types/coordinator.js'
 const INTERVAL_LEVEL_MAP: Record<string, IntervalLevel> = {
     '5m': 'L1',
     '1h': 'L2',
@@ -21,8 +22,8 @@ const INTERVAL_LEVEL_MAP: Record<string, IntervalLevel> = {
 export abstract class BaseKlineManager {
     /* ========= 子类必须实现 ========= */
 
-    protected abstract readonly SYMBOL: string
-    protected abstract readonly INTERVAL: Interval | '1m'
+    protected readonly SYMBOL: string
+    protected readonly INTERVAL: Interval | '1m'
     protected abstract readonly HTTP_LIMIT: number
     protected abstract readonly CACHE_LIMIT: number
     protected abstract readonly LOG_PREFIX: string
@@ -53,6 +54,17 @@ export abstract class BaseKlineManager {
     private reconnectTimer?: NodeJS.Timeout
     private resyncing = false
 
+    protected wsHealth!: WsHealthCollector
+
+    constructor(symbol: string, interval: Interval) {
+        this.SYMBOL = symbol
+        this.INTERVAL = interval
+        this.wsHealth = new WsHealthCollector(symbol, interval)
+    }
+
+    public getWsHealthSnapshot(): WsHealthSnapshot {
+        return this.wsHealth.snapshot()
+    }
     /* ========= 生命周期 ========= */
 
     async init() {
@@ -150,6 +162,8 @@ export abstract class BaseKlineManager {
 
         this.ws.on('open', () => {
             console.log(`[${this.LOG_PREFIX}] WS connected`)
+            this.wsHealth.inc('ws_connected')
+            this.wsHealth.setAlive(true)
             this.reconnectDelay = 1000
             this.startHeartbeat()
         })
@@ -157,7 +171,8 @@ export abstract class BaseKlineManager {
         this.ws.on('message', (raw) => {
             this.lastMessageTs = Date.now()
             this.reconnectDelay = 1000 // 收到消息说明连接健康
-
+            this.wsHealth.inc('ws_message')
+            this.wsHealth.setLastMessage(Date.now())
             try {
                 this.handleWSMessage(raw.toString())
             } catch (e) {
@@ -167,12 +182,15 @@ export abstract class BaseKlineManager {
 
         this.ws.on('close', () => {
             console.warn(`[${this.LOG_PREFIX}] WS closed`)
+            this.wsHealth.inc('ws_disconnected')
+            this.wsHealth.setAlive(false)
             this.stopHeartbeat()
             this.scheduleReconnect()
         })
 
         this.ws.on('error', (err) => {
             console.warn(`[${this.LOG_PREFIX}] WS error`, err)
+            this.wsHealth.inc('ws_error')
             this.ws?.close()
         })
     }
@@ -208,6 +226,7 @@ export abstract class BaseKlineManager {
             // WS 断流
             if (now - this.lastMessageTs > 60_000) {
                 console.warn(`[${this.LOG_PREFIX}] WS heartbeat timeout`)
+                this.wsHealth.inc('ws_heartbeat_timeout')
                 this.ws?.terminate()
                 return
             }
@@ -215,6 +234,9 @@ export abstract class BaseKlineManager {
             // 🟠 K 线 stale
             if (this.lastCloseTime && now - this.lastCloseTime > expectedStep * 2) {
                 console.warn(`[${this.LOG_PREFIX}] kline stale detected`)
+                this.wsHealth.inc('ws_stale_detected')
+                this.wsHealth.setTimeHealth('broken')
+
                 this.timeHealth = 'broken'
                 this.tryResync('stale')
             }
@@ -259,7 +281,7 @@ export abstract class BaseKlineManager {
 
     protected async forceResync() {
         console.warn(`[${this.LOG_PREFIX}] force resync start`)
-
+        this.wsHealth.inc('ws_resync_triggered')
         // ✅ 取消 pending reconnect
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer)
@@ -316,7 +338,7 @@ export abstract class BaseKlineManager {
                     `[${this.LOG_PREFIX}] kline time rollback`,
                     new Date(k.closeTime).toISOString(),
                 )
-
+                this.wsHealth.inc('ws_rollback_detected')
                 this.timeHealth = 'broken'
                 void this.tryResync('rollback')
 
@@ -331,8 +353,9 @@ export abstract class BaseKlineManager {
                     `[${this.LOG_PREFIX}] kline gap detected`,
                     `gap=${delta / expectedStep}`,
                 )
-
+                this.wsHealth.inc('ws_gap_detected')
                 this.timeHealth = 'warning'
+                this.wsHealth.setTimeHealth(this.timeHealth)
             } else {
                 this.timeHealth = 'healthy'
             }

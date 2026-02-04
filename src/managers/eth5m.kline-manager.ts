@@ -27,8 +27,9 @@ function detectSwingIndex(
 /* ================== Manager ================== */
 
 export class ETH5mKlineManager extends BaseKlineManager {
-    protected readonly SYMBOL = 'ETHUSDT'
-    protected readonly INTERVAL = '5m'
+    constructor() {
+        super('ETHUSDT', '5m')
+    }
     protected readonly HTTP_LIMIT = 200
     protected readonly CACHE_LIMIT = 500
     protected readonly LOG_PREFIX = 'ETH 5m'

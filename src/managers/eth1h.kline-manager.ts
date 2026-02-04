@@ -7,8 +7,9 @@ type Trend = 'bull' | 'bear' | 'range'
 type Structure = 'hh_hl' | 'lh_ll' | 'range'
 
 export class ETH1hKlineManager extends BaseKlineManager {
-    protected readonly SYMBOL = 'ETHUSDT'
-    protected readonly INTERVAL = '1h'
+    constructor() {
+        super('ETHUSDT', '1h')
+    }
     protected readonly HTTP_LIMIT = 100
     protected readonly CACHE_LIMIT = 300
     protected readonly LOG_PREFIX = 'ETH 1h'

@@ -26,3 +26,17 @@ export interface optsConfig {
     allowH1Warning: boolean
     allowH4Warning: boolean
 }
+export interface WsHealthSnapshot {
+    ts: number
+    symbol: string
+    interval: string
+
+    counters: Record<string, number>
+
+    gauges: {
+        alive: boolean
+        timeHealth: 'healthy' | 'warning' | 'broken'
+        lastMessageTs: number | null
+        lastCloseTime: number | null
+    }
+}

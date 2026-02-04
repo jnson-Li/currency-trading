@@ -7,7 +7,7 @@ import { PaperExecutionEngine } from '@/execution/paper-execution-engine.js'
 import { createJsonlRecorder } from '@/execution/jsonl-recorder.js'
 // import { LiveExecutionEngine } from '@/execution/live-execution-engine.js'
 import { BasicExecutionMetricsCollector } from '@/execution/execution-metrics-collector.impl.js'
-
+import { ShadowExecutionEngine } from '@/execution/shadow-execution-engine.js'
 const execMetrics = new BasicExecutionMetricsCollector()
 
 const write = createJsonlRecorder('./data/paper/ethusdt-paper.jsonl')
@@ -24,7 +24,7 @@ try {
     //     maxConsecutiveLosses: 3,
     //     warmupMs: 2 * 60 * 1000,
     // })
-    const executor = new PaperExecutionEngine({
+    const paper = new PaperExecutionEngine({
         orderType: 'market',
         maxSlippagePct: 0.0007,
         spreadPct: 0.0004,
@@ -77,6 +77,17 @@ try {
             })
         },
     })
+
+    const executor = new ShadowExecutionEngine(
+        {
+            minOrderIntervalMs: 5 * 60 * 1000,
+            maxPositionPct: 0.2,
+            maxDailyLossPct: 0.02,
+            maxConsecutiveLosses: 3,
+            warmupMs: 2 * 60 * 1000,
+        },
+        paper,
+    )
 
     // ⭐ 关键：await + 接住 stop
     system = await bootstrap('live', {
