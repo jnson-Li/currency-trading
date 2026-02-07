@@ -9,7 +9,7 @@ import {
     Trend,
     Interval,
 } from '@/types/market.js'
-import { wsProxyAgent } from '@/infra/ws-proxy.js'
+import { wsProxyAgent } from '@/infra/proxy.js'
 import { intervalToMs } from '@/utils/interval.js'
 import { WsHealthCollector } from '@/metrics/ws-health-collector.js'
 import type { WsHealthSnapshot } from '@/types/coordinator.js'

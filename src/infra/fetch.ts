@@ -1,7 +1,7 @@
 // src/network/fetch.ts
 import { fetch, Dispatcher, type RequestInit } from 'undici'
 
-import { proxyAgent } from './proxy.js'
+import { httpProxyAgent } from './proxy.js'
 
 export interface StableFetchOptions extends RequestInit {
     timeoutMs?: number
@@ -52,7 +52,7 @@ export async function stableFetch(url: string, options: StableFetchOptions = {})
             const res = await fetch(url, {
                 ...rest,
                 signal: controller.signal,
-                dispatcher: proxyAgent as Dispatcher | undefined,
+                dispatcher: httpProxyAgent as Dispatcher | undefined,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 BinanceFetcher',
                     Accept: 'application/json',
@@ -87,7 +87,7 @@ export async function stableFetch(url: string, options: StableFetchOptions = {})
 
             console.warn(
                 `[stableFetch] retry ${attempt}/${retries} after ${backoff}ms`,
-                err?.name || err
+                err?.name || err,
             )
 
             await sleep(backoff)
