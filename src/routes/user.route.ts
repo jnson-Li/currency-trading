@@ -3,7 +3,6 @@ import { getUserSchema, addUserSchema } from '../schemas/user.schema.js'
 import { getUsers, addUsers } from '../services/user.service.js'
 import { CreateUserDTO } from '../types/user.js'
 import { ENV } from '../config/env.js'
-console.log('[ 接口 ] >', ENV.API_BASE_URL)
 export default async function userRoutes(app: FastifyInstance) {
     app.get<{
         Querystring: {

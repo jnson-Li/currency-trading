@@ -13,29 +13,45 @@ type LiveManagers = {
     h4: ETH4hKlineManager
 }
 
-export async function startLiveMode(managers: LiveManagers) {
-    console.log('[live] starting...')
+function sleep(ms: number) {
+    return new Promise((r) => setTimeout(r, ms))
+}
 
-    await Promise.all([
-        managers.m5.init(),
-        managers.m15.init(),
-        managers.h1.init(),
-        managers.h4.init(),
-    ])
+export async function startLiveMode(managers: LiveManagers) {
+    console.log('[live] starting (staggered init)...')
+
+    const steps: Array<[string, { init: () => Promise<any> }]> = [
+        ['5m', managers.m5], // ⭐ 最关键，先起
+        ['15m', managers.m15],
+        ['1h', managers.h1],
+        ['4h', managers.h4], // 最不敏感，最后
+    ]
+
+    for (const [name, mgr] of steps) {
+        try {
+            console.log(`[live] init ${name}...`)
+            await mgr.init()
+            console.log(`[live] ${name} ready`)
+        } catch (e) {
+            console.error(`[live] ${name} init failed`, e)
+            // ❗不中断启动，让系统整体还能跑
+        }
+
+        // ⭐ 错峰间隔（可调）
+        await sleep(800)
+    }
 
     console.log('[live] started')
 
     let stopped = false
 
     return {
-        /** 优雅关闭行情源 / 定时器 / ws */
         async stop() {
             if (stopped) return
             stopped = true
 
             console.warn('[live] stopping...')
 
-            // 如果你的 manager 有 stop / close / destroy，用最通用的方式兜底
             const maybeStop = async (m: any) => {
                 try {
                     if (typeof m.stop === 'function') await m.stop()
@@ -46,11 +62,12 @@ export async function startLiveMode(managers: LiveManagers) {
                 }
             }
 
+            // 停止顺序反过来（可选，但更优雅）
             await Promise.all([
-                maybeStop(managers.m5),
-                maybeStop(managers.m15),
-                maybeStop(managers.h1),
                 maybeStop(managers.h4),
+                maybeStop(managers.h1),
+                maybeStop(managers.m15),
+                maybeStop(managers.m5),
             ])
 
             console.warn('[live] stopped')

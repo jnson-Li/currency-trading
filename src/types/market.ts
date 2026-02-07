@@ -79,7 +79,7 @@ export interface BaseKlineSnapshot {
     level: IntervalLevel
 
     lastKline: Kline
-
+    lastConfirmedCloseTime?: number
     ready: boolean
     cacheSize: number
     timeHealth: TimeHealth

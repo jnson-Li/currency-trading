@@ -36,6 +36,7 @@ export abstract class BaseKlineManager {
     protected syncing = false
     protected ready = false
     protected lastCloseTime?: number
+    protected lastConfirmedCloseTime?: number
 
     /* ========= 分析状态（统一托管） ========= */
     protected trend: Trend = 'range'
@@ -53,6 +54,7 @@ export abstract class BaseKlineManager {
     protected lastResyncTs = 0
     private reconnectTimer?: NodeJS.Timeout
     private resyncing = false
+    private blockedByRollback = false
 
     protected wsHealth!: WsHealthCollector
 
@@ -263,6 +265,7 @@ export abstract class BaseKlineManager {
         this.upsertKline(kline)
         this.trimCache()
         this.onNewClosedKline(kline)
+        this.lastConfirmedCloseTime = kline.closeTime
     }
 
     protected fromWsRaw(k: any): Kline {
@@ -281,6 +284,7 @@ export abstract class BaseKlineManager {
 
     protected async forceResync() {
         console.warn(`[${this.LOG_PREFIX}] force resync start`)
+        this.blockedByRollback = false
         this.wsHealth.inc('ws_resync_triggered')
         // ✅ 取消 pending reconnect
         if (this.reconnectTimer) {
@@ -330,6 +334,10 @@ export abstract class BaseKlineManager {
 
     protected upsertKline(k: Kline) {
         const expectedStep = intervalToMs(this.INTERVAL)
+        if (this.blockedByRollback) {
+            // 丢弃所有数据，直到 resync 成功
+            return
+        }
 
         if (this.lastCloseTime != null) {
             // ❌ 时间回退：直接标记 broken
@@ -340,6 +348,7 @@ export abstract class BaseKlineManager {
                 )
                 this.wsHealth.inc('ws_rollback_detected')
                 this.timeHealth = 'broken'
+                this.blockedByRollback = true
                 void this.tryResync('rollback')
 
                 return
@@ -395,6 +404,7 @@ export abstract class BaseKlineManager {
             level: INTERVAL_LEVEL_MAP[this.INTERVAL],
 
             lastKline: this.lastKline,
+            lastConfirmedCloseTime: this.lastConfirmedCloseTime,
 
             ready: this.ready,
             cacheSize: this.klines.length,
@@ -454,7 +464,6 @@ export abstract class BaseKlineManager {
         return () => this.closedListeners.delete(cb)
     }
     protected onNewClosedKline(k: Kline) {
-        console.log('[ onNewClosedKline ] >', this.klines.length)
         this.updateAnalysis()
         this.afterAnalysis(k)
         for (const cb of this.closedListeners) {

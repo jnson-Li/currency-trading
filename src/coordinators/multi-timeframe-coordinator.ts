@@ -70,7 +70,9 @@ export class MultiTimeframeCoordinator {
         this.lastClosed['5m'] = closeTime
 
         // ① 重新计算 Decision
-        const decision = this.recomputeDecision(kline)
+        const now = Date.now()
+
+        const decision = this.recomputeDecision(kline, now)
 
         // ② 生成 state（用于 StrategyEngine）
         this.lastState = {
@@ -143,13 +145,14 @@ export class MultiTimeframeCoordinator {
      * ================== Internals ==================
      */
 
-    private recomputeDecision(snapshots: Record<Interval, KlineSnapshot>): TradePermission {
+    private recomputeDecision(
+        snapshots: Record<Interval, KlineSnapshot>,
+        now: number,
+    ): TradePermission {
         const m5 = snapshots['5m']
         const m15 = snapshots['15m']
         const h1 = snapshots['1h']
         const h4 = snapshots['4h']
-
-        const computedAt = m5?.updatedAt || Date.now()
 
         // 1) ready / snapshot 必须齐（你策略链路需要 5m/15m/1h/4h）
         if (!m5?.ready || !m15?.ready || !h1?.ready || !h4?.ready) {
@@ -168,7 +171,7 @@ export class MultiTimeframeCoordinator {
         }
 
         // 2) freshness（避免 WS 活着但收不到收盘 K 的“假健康”）
-        const stale = this.checkStale({ m5, m15, h1, h4, now: computedAt })
+        const stale = this.checkStale({ m5, m15, h1, h4, now })
         if (stale) return stale
 
         // 3) timeHealth 级联（核心）
@@ -249,11 +252,18 @@ export class MultiTimeframeCoordinator {
                     detail: `${interval} snapshot lastKline is null`,
                 }
             }
+            const confirmedClose = s.lastConfirmedCloseTime
+            if (typeof confirmedClose !== 'number') {
+                return {
+                    allowed: false,
+                    reason: 'no_confirmed_close',
+                    detail: `${interval} has no confirmed close`,
+                }
+            }
 
             const step = intervalToMs(interval)
             const maxAge = step * staleBars[interval]
-            const age = now - s.lastKline.closeTime
-
+            const age = s.updatedAt - confirmedClose
             // 服务器时间如果被调过可能出现负数，这也要挡一下
             if (age < -5_000) {
                 return {

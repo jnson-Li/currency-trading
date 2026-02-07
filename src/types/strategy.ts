@@ -33,5 +33,6 @@ export interface TradePermission {
         | 'stale_data'
         | 'clock_skew'
         | 'snapshot_is_null'
+        | 'no_confirmed_close'
     detail?: string
 }

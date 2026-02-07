@@ -134,7 +134,6 @@ export class ETH4hKlineManager extends BaseKlineManager {
 
     private updateStructureAndLegs() {
         const { highs, lows } = findSwings(this.klines, 5)
-        console.log('[ ETH 4h structure ] >', { highs, lows })
         if (highs.length < 2 || lows.length < 2) {
             this.applyStableStructure('range')
             this.legs = {}
