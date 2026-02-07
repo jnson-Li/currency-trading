@@ -3,7 +3,8 @@
     "scripts": {
         "dev": "cross-env NODE_ENV=development tsx watch src/server.ts",
         "build": "tsc",
-        "start": "cross-env NODE_ENV=production node dist/server.js",
+        "start-windows": "cross-env NODE_ENV=production node dist/server.js",
+        "start": "NODE_ENV=production node dist/server.js",
         "backtest": "NODE_ENV=backtest tsx src/backtest/run.ts",
         "backtest:sliced": "NODE_ENV=backtest tsx src/backtest/run-sliced.ts",
         "backtest:stability": "NODE_ENV=backtest tsx src/backtest/run-stability.ts"
