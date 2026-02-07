@@ -1,4 +1,3 @@
-import { httpFetch } from '../infra/http.js'
 import { stableFetch } from '@/infra/fetch.js'
 import {
     BinanceRawKlines,
@@ -24,7 +23,7 @@ export async function fetchNewKline(params: NewKlineParams) {
 
 export async function fetchBiAnKline(params: BiAnKlineParams) {
     const query = new URLSearchParams(
-        Object.entries(params).map(([k, v]) => [k, String(v)])
+        Object.entries(params).map(([k, v]) => [k, String(v)]),
     ).toString()
 
     const url = `https://api.binance.com/api/v3/klines?${query}`
