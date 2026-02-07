@@ -1,11 +1,11 @@
-import { ETH5mKlineManager, ETH15mKlineManager, ETH1hKlineManager, ETH4hKlineManager, } from '@/managers/index.js';
-import { MultiTimeframeCoordinator } from '@/coordinators/multi-timeframe-coordinator.js';
+import { ETH5mKlineManager, ETH15mKlineManager, ETH1hKlineManager, ETH4hKlineManager, } from '../managers/index.js';
+import { MultiTimeframeCoordinator } from '../coordinators/multi-timeframe-coordinator.js';
 import { bindEvents } from './bind-events.js';
 import { startLiveMode } from './run-modes/live.js';
 import { startBacktestMode } from './run-modes/backtest.js';
-import { StrategyEngine } from '@/strategy/strategy-engine.js';
-import { RejectStatsFile } from '@/debug/reject-stats-file.js';
-import { registerWsHealthForManagers } from '@/metrics/register-ws-health.js';
+import { StrategyEngine } from '../strategy/strategy-engine.js';
+import { RejectStatsFile } from '../debug/reject-stats-file.js';
+import { registerWsHealthForManagers } from '../metrics/register-ws-health.js';
 /** ===== 执行引擎插槽：后续 Paper / Shadow / Testnet / Live 都实现这个接口即可 ===== */
 class NoopExecutionEngine {
     async execute(signal, ctx) {

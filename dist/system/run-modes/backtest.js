@@ -1,6 +1,6 @@
-import { HistoricalDataStore } from '@/historical/HistoricalDataStore.js';
-import { getLast6MonthsWindow } from '@/backtest/time-window.js';
-import { StrategyEngine } from '@/strategy/strategy-engine.js';
+import { HistoricalDataStore } from '../../historical/HistoricalDataStore.js';
+import { getLast6MonthsWindow } from '../../backtest/time-window.js';
+import { StrategyEngine } from '../../strategy/strategy-engine.js';
 /**
  * 回测模式
  * 用 for-loop 重放历史 K 线

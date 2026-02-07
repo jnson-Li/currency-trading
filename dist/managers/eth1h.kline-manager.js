@@ -1,6 +1,6 @@
 import { BaseKlineManager } from './base-kline-manager.js';
-import { calcEMA } from '@/utils/ema.js';
-import { findSwings } from '@/utils/swing.js';
+import { calcEMA } from '../utils/ema.js';
+import { findSwings } from '../utils/swing.js';
 export class ETH1hKlineManager extends BaseKlineManager {
     constructor() {
         super('ETHUSDT', '1h');

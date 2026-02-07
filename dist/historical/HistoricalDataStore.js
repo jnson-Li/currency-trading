@@ -2,7 +2,7 @@
 import path from 'path';
 import fs from 'fs';
 import { Agent } from 'undici';
-import { fetchBiAnKline } from '@/services/market.service.js';
+import { fetchBiAnKline } from '../services/market.service.js';
 import { iterateMonths, monthKey, monthRange } from './time.js';
 /* =======================
    网络层（Binance 专用）

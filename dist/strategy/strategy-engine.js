@@ -1,4 +1,4 @@
-import { gateTrendSwitch, gateHighVolatility, gateTrendExhaustion } from '@/strategy/gates.js';
+import { gateTrendSwitch, gateHighVolatility, gateTrendExhaustion } from '../strategy/gates.js';
 export class StrategyEngine {
     /** 最近一次失败原因（方便 bootstrap / backtest 打印/统计） */
     lastReject = null;

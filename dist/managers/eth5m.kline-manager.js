@@ -1,5 +1,5 @@
 import { BaseKlineManager } from './base-kline-manager.js';
-import { calcEMA, calcATR } from '@/utils/ema.js';
+import { calcEMA, calcATR } from '../utils/ema.js';
 /* ================== Utils ================== */
 /** 识别 swing high / low（返回 index） */
 function detectSwingIndex(klines, lookback = 3) {

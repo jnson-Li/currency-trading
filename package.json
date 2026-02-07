@@ -2,7 +2,7 @@
     "type": "module",
     "scripts": {
         "dev": "cross-env NODE_ENV=development tsx watch src/server.ts",
-        "build": "tsc",
+        "build": "tsc && tsc-alias",
         "start-windows": "cross-env NODE_ENV=production node dist/server.js",
         "start": "NODE_ENV=production node dist/server.js",
         "backtest": "NODE_ENV=backtest tsx src/backtest/run.ts",
@@ -20,6 +20,7 @@
         "@types/node": "^25.0.3",
         "@types/ws": "^8.18.1",
         "cross-env": "^10.1.0",
+        "tsc-alias": "^1.8.16",
         "tsx": "^4.21.0",
         "typescript": "^5.9.3"
     },

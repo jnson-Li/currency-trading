@@ -1,7 +1,7 @@
 // proxy.ts
 import { ProxyAgent } from 'undici';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { ENV } from '@/config/env.js';
+import { ENV } from '../config/env.js';
 const proxyUrl = ENV.HTTPS_PROXY || ENV.HTTP_PROXY;
 /**
  * HTTP（undici fetch）专用

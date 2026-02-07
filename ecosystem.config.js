@@ -2,8 +2,8 @@ module.exports = {
     apps: [
         {
             name: 'currency-trading', // PM2 里显示的名字
-            script: 'dist/index.js', // 你的程序入口（TS 编译后）
-            cwd: '/root/quant-project', // 项目绝对路径（很重要）
+            script: 'dist/server.js', // 生产环境启动编译后的代码
+            cwd: '/home/admin/currency-trading', // 项目绝对路径（很重要）
             node_args: '--enable-source-maps',
 
             // 运行模式

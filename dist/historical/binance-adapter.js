@@ -1,4 +1,4 @@
-import { fetchBiAnKline } from '@/services/market.service.js';
+import { fetchBiAnKline } from '../services/market.service.js';
 export async function fetchBinancePage(symbol, interval, startTime, endTime) {
     return fetchBiAnKline({
         symbol,

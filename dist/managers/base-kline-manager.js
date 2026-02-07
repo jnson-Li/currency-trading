@@ -1,8 +1,8 @@
 import WebSocket from 'ws';
-import { fetchBiAnKline } from '@/services/market.service.js';
-import { wsProxyAgent } from '@/infra/proxy.js';
-import { intervalToMs } from '@/utils/interval.js';
-import { WsHealthCollector } from '@/metrics/ws-health-collector.js';
+import { fetchBiAnKline } from '../services/market.service.js';
+import { wsProxyAgent } from '../infra/proxy.js';
+import { intervalToMs } from '../utils/interval.js';
+import { WsHealthCollector } from '../metrics/ws-health-collector.js';
 const INTERVAL_LEVEL_MAP = {
     '5m': 'L1',
     '1h': 'L2',

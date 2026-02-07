@@ -1,4 +1,4 @@
-import { stableFetch } from '@/infra/fetch.js';
+import { stableFetch } from '../infra/fetch.js';
 export async function fetchNewKline(params) {
     const res = await fetch('https://api9528mystks.mystonks.org/api/v1/stockhome/newKline', {
         method: 'POST',

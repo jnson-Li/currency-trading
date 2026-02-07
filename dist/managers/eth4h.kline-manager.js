@@ -1,6 +1,6 @@
 import { BaseKlineManager } from './base-kline-manager.js';
-import { findSwings } from '@/utils/swing.js';
-import { calcEMA, calcATR } from '@/utils/ema.js';
+import { findSwings } from '../utils/swing.js';
+import { calcEMA, calcATR } from '../utils/ema.js';
 /**
  * 用 swings 估算最近几段“推进/回调”均值（用于衰竭 gate）
  * - bull: impulse = HL->HH，pullback = HH->HL

@@ -1,4 +1,4 @@
-import { intervalToMs } from '@/utils/interval.js';
+import { intervalToMs } from '../utils/interval.js';
 /**
  * =============== Coordinator ===============
  *

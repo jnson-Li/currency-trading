@@ -1,6 +1,6 @@
 console.log('[load] data-loader.ts');
 import path from 'path';
-import { fetchBiAnKline } from '@/services/market.service.js';
+import { fetchBiAnKline } from '../services/market.service.js';
 import { readJsonCache, writeJsonCache } from './cache.js';
 function formatDate(ts) {
     return new Date(ts).toISOString().slice(0, 10);

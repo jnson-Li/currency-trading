@@ -1,4 +1,4 @@
-import { EXEC_REASON } from '@/execution/execution-reject-reasons.js';
+import { EXEC_REASON } from '../execution/execution-reject-reasons.js';
 export class LiveExecutionEngine {
     cfg;
     startedAt = Date.now();

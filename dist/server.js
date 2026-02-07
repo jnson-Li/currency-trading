@@ -3,11 +3,11 @@ import './config/env.js';
 import { buildApp } from './app.js';
 import { ENV } from './config/env.js';
 import { bootstrap } from './system/bootstrap.js';
-import { PaperExecutionEngine } from '@/execution/paper-execution-engine.js';
-import { createJsonlRecorder } from '@/execution/jsonl-recorder.js';
-// import { LiveExecutionEngine } from '@/execution/live-execution-engine.js'
-import { BasicExecutionMetricsCollector } from '@/execution/execution-metrics-collector.impl.js';
-import { ShadowExecutionEngine } from '@/execution/shadow-execution-engine.js';
+import { PaperExecutionEngine } from './execution/paper-execution-engine.js';
+import { createJsonlRecorder } from './execution/jsonl-recorder.js';
+// import { LiveExecutionEngine } from './execution/live-execution-engine.js'
+import { BasicExecutionMetricsCollector } from './execution/execution-metrics-collector.impl.js';
+import { ShadowExecutionEngine } from './execution/shadow-execution-engine.js';
 console.log('[ ENV ] >', ENV);
 const execMetrics = new BasicExecutionMetricsCollector();
 const write = createJsonlRecorder('./data/paper/ethusdt-paper.jsonl');

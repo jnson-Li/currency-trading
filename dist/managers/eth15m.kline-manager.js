@@ -1,6 +1,6 @@
 import { BaseKlineManager } from './base-kline-manager.js';
-import { calcEMA } from '@/utils/ema.js';
-import { findSwings } from '@/utils/swing.js';
+import { calcEMA } from '../utils/ema.js';
+import { findSwings } from '../utils/swing.js';
 function calcATR(klines, period) {
     if (klines.length < period + 1)
         return null;
