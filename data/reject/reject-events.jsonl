@@ -1,1 +1,0 @@
-{"ts":1770278400695,"type":"reject","stage":"gate_trend_switch","code":"SWITCH_COOLDOWN_M15","at":1770278400695,"meta":{"m15ChangedAt":1770277500640,"cooldownMs":1800000,"deltaMs":899359,"now":1770278399999},"symbol":"ETHUSDT","closeTime":1770278399999}

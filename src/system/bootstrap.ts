@@ -15,7 +15,6 @@ import { RejectStatsFile } from '@/debug/reject-stats-file.js'
 // ✅ 你 coordinator 里 onTrigger / onDecisionChange 传出来的就是 StrategyContext
 import type { StrategyContext } from '@/strategy/strategy-context.js'
 import type { TradeSignal, TradeSignalBase } from '@/types/strategy.js'
-import { startWsHealthReporter } from '@/metrics/ws-health-reporter.js'
 import { registerWsHealthForManagers } from '@/metrics/register-ws-health.js'
 export type RunMode = 'live' | 'backtest'
 

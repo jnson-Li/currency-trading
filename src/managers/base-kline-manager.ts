@@ -266,6 +266,7 @@ export abstract class BaseKlineManager {
         this.trimCache()
         this.onNewClosedKline(kline)
         this.lastConfirmedCloseTime = kline.closeTime
+        this.wsHealth.setLastCloseTime(kline.closeTime)
     }
 
     protected fromWsRaw(k: any): Kline {
