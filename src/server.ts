@@ -1,31 +1,76 @@
-// Import the framework and instantiate it
 import './config/env.js'
 import { buildApp } from './app.js'
 import { ENV } from './config/env.js'
 import { bootstrap } from './system/bootstrap.js'
 import { PaperExecutionEngine } from '@/execution/paper-execution-engine.js'
-import { createJsonlRecorder } from '@/execution/jsonl-recorder.js'
-// import { LiveExecutionEngine } from '@/execution/live-execution-engine.js'
-import { BasicExecutionMetricsCollector } from '@/execution/execution-metrics-collector.impl.js'
 import { ShadowExecutionEngine } from '@/execution/shadow-execution-engine.js'
+import { BasicExecutionMetricsCollector } from '@/execution/execution-metrics-collector.impl.js'
+import { createExecutionMetricsWriter } from '@/metrics/execution-metrics-writer.js'
+import { createJsonlRecorder } from '@/execution/jsonl-recorder.js'
+import { recordSystemHealth } from '@/metrics/system-health-recorder.js'
+import { consoleAlert } from '@/metrics/system-health-console.js'
+import { telegramAlert } from '@/alert/telegram-health.js'
+import { sendTelegram } from '@/alert/telegram.js'
 
 console.log('[ ENV ] >', ENV)
+/* =======================
+ * Metrics setup
+ * ======================= */
 const execMetrics = new BasicExecutionMetricsCollector()
 
-const write = createJsonlRecorder('./data/paper/ethusdt-paper.jsonl')
+const writeExecMetrics = createExecutionMetricsWriter('./data/metrics/execution-metrics.jsonl')
+async function checkTelegramHealth() {
+    try {
+        await sendTelegram(
+            ENV.TG_BOT_TOKEN,
+            ENV.TG_CHAT_ID,
+            `✅ System startup test：${ENV.NODE_ENV} `,
+        )
+        console.log('[telegram] ok')
+    } catch (e) {
+        console.error('[telegram] FAILED', e)
+    }
+}
+
+const METRICS_INTERVAL_MS = 60 * 60 * 1000 // 1h
+
+const metricsTimer = setInterval(async () => {
+    const ts = Date.now()
+
+    // 1️⃣ 统一 snapshot（只取一次）
+    const snapshot = execMetrics.snapshot()
+
+    // 2️⃣ execution metrics 落盘
+    writeExecMetrics({
+        ts,
+        reason: 'interval',
+        snapshot,
+    })
+
+    // 3️⃣ system health 评估 + 落盘
+    const report = recordSystemHealth(snapshot)
+    // 4️⃣ 告警
+    consoleAlert(report)
+    await telegramAlert(report)
+
+    // 5️⃣ 最后 reset（只 reset 一次）
+    execMetrics.reset()
+}, METRICS_INTERVAL_MS)
+
+metricsTimer.unref()
+
+/* =======================
+ * Paper log
+ * ======================= */
+const writePaper = createJsonlRecorder('./data/paper/ethusdt-paper.jsonl')
 
 const app = await buildApp()
 
 let system: { stop: () => Promise<void> } | null = null
 
 try {
-    // const executor = new LiveExecutionEngine({
-    //     minOrderIntervalMs: 5 * 60 * 1000,
-    //     maxPositionPct: 0.2,
-    //     maxDailyLossPct: 0.02,
-    //     maxConsecutiveLosses: 3,
-    //     warmupMs: 2 * 60 * 1000,
-    // })
+    checkTelegramHealth()
+
     const paper = new PaperExecutionEngine({
         orderType: 'market',
         maxSlippagePct: 0.0007,
@@ -41,39 +86,28 @@ try {
         onResult: (res, signal, ctx) => {
             const ts = Date.now()
 
-            // 1️⃣ 执行层统一统计（Paper / Live 对齐）
+            // ⭐ 1️⃣ execution metrics
             execMetrics.record({
                 ts,
                 mode: 'paper',
-
                 signalId: res.signalId,
                 symbol: signal.symbol,
                 side: signal.side,
-
                 accepted: res.accepted,
                 reason: res.reason,
-
                 confidence: signal.confidence,
                 price: signal.price,
-
                 meta: {
                     closeTime: ctx.trigger?.closeTime,
                     permissionAllowed: ctx.permission?.allowed,
                 },
             })
 
-            // 2️⃣ 详细日志（你原来的）
-            write({
+            // ⭐ 2️⃣ 原始明细
+            writePaper({
                 ts,
                 res,
-                signal: {
-                    symbol: signal.symbol,
-                    side: signal.side,
-                    confidence: signal.confidence,
-                    reason: signal.reason,
-                    price: signal.price,
-                    createdAt: signal.createdAt,
-                },
+                signal,
                 trigger: ctx.trigger,
                 permission: ctx.permission,
             })
@@ -91,10 +125,8 @@ try {
         paper,
     )
 
-    // ⭐ 关键：await + 接住 stop
     system = await bootstrap('live', {
         executor,
-        metricsIntervalMs: 12, // 每 12 次 eval 打一次 metrics（≈1小时）
     })
 
     await app.listen({ port: ENV.PORT })
@@ -104,10 +136,32 @@ try {
     process.exit(1)
 }
 
-// ===== server 级别兜底 shutdown（非常推荐）=====
+/* =======================
+ * Graceful shutdown
+ * ======================= */
 const shutdown = async (sig: string) => {
     console.warn(`[server] ${sig} received, shutting down...`)
+
     try {
+        clearInterval(metricsTimer)
+
+        const ts = Date.now()
+        const snapshot = execMetrics.snapshot()
+
+        // ⭐ 最后一笔 execution metrics
+        writeExecMetrics({
+            ts,
+            reason: 'shutdown',
+            snapshot,
+        })
+
+        // ⭐ 最后一份 system health
+        const report = recordSystemHealth(snapshot)
+        consoleAlert(report)
+        await telegramAlert(report)
+
+        execMetrics.reset()
+
         await system?.stop?.()
     } catch (e) {
         console.error('[server] shutdown error:', e)

@@ -42,3 +42,10 @@ if (permission.allowed)
 StrategyContextBuilder.build()
    ↓
 StrategyEngine.evaluate()
+
+启动流程：
+git pull
+npm run build
+pm2 restart currency-trading
+pm2 flush
+pm2 logs currency-trading --lines 50
