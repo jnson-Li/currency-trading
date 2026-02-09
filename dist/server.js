@@ -11,6 +11,21 @@ import { recordSystemHealth } from './metrics/system-health-recorder.js';
 import { consoleAlert } from './metrics/system-health-console.js';
 import { telegramAlert } from './alert/telegram-health.js';
 import { sendTelegram } from './alert/telegram.js';
+if (process.env.NODE_ENV === 'production') {
+    console.log('[env] production mode');
+    const forbidden = ['.env', '.env.production', '.env.local'];
+    for (const f of forbidden) {
+        if (require('fs').existsSync(f)) {
+            console.warn(`[env] ⚠️ file ${f} exists in production`);
+        }
+    }
+    const required = ['TG_BOT_TOKEN', 'TG_CHAT_ID'];
+    for (const k of required) {
+        if (!process.env[k]) {
+            throw new Error(`[env] missing ${k}`);
+        }
+    }
+}
 console.log('[ ENV ] >', ENV);
 /* =======================
  * Metrics setup
