@@ -17,9 +17,11 @@
         "ws": "^8.18.3"
     },
     "devDependencies": {
+        "@commitlint/cli": "^20.4.1",
         "@types/node": "^25.0.3",
         "@types/ws": "^8.18.1",
         "cross-env": "^10.1.0",
+        "husky": "^9.1.7",
         "tsc-alias": "^1.8.16",
         "tsx": "^4.21.0",
         "typescript": "^5.9.3"
