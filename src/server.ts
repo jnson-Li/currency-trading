@@ -1,4 +1,5 @@
 import './config/env.js'
+import { existsSync } from 'node:fs'
 import { buildApp } from './app.js'
 import { ENV } from './config/env.js'
 import { bootstrap } from './system/bootstrap.js'
@@ -16,10 +17,11 @@ if (process.env.NODE_ENV === 'production') {
 
     const forbidden = ['.env', '.env.production', '.env.local']
     for (const f of forbidden) {
-        if (require('fs').existsSync(f)) {
+        if (existsSync(f)) {
             console.warn(`[env] ⚠️ file ${f} exists in production`)
         }
     }
+
     const required = ['TG_BOT_TOKEN', 'TG_CHAT_ID']
     for (const k of required) {
         if (!process.env[k]) {

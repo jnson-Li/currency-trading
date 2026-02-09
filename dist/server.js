@@ -1,77 +1,75 @@
-import './config/env.js'
-import { buildApp } from './app.js'
-import { ENV } from './config/env.js'
-import { bootstrap } from './system/bootstrap.js'
-import { PaperExecutionEngine } from './execution/paper-execution-engine.js'
-import { ShadowExecutionEngine } from './execution/shadow-execution-engine.js'
-import { BasicExecutionMetricsCollector } from './execution/execution-metrics-collector.impl.js'
-import { createExecutionMetricsWriter } from './metrics/execution-metrics-writer.js'
-import { createJsonlRecorder } from './execution/jsonl-recorder.js'
-import { recordSystemHealth } from './metrics/system-health-recorder.js'
-import { consoleAlert } from './metrics/system-health-console.js'
-import { telegramAlert } from './alert/telegram-health.js'
-import { sendTelegram } from './alert/telegram.js'
+import './config/env.js';
+import { existsSync } from 'node:fs';
+import { buildApp } from './app.js';
+import { ENV } from './config/env.js';
+import { bootstrap } from './system/bootstrap.js';
+import { PaperExecutionEngine } from './execution/paper-execution-engine.js';
+import { ShadowExecutionEngine } from './execution/shadow-execution-engine.js';
+import { BasicExecutionMetricsCollector } from './execution/execution-metrics-collector.impl.js';
+import { createExecutionMetricsWriter } from './metrics/execution-metrics-writer.js';
+import { createJsonlRecorder } from './execution/jsonl-recorder.js';
+import { recordSystemHealth } from './metrics/system-health-recorder.js';
+import { consoleAlert } from './metrics/system-health-console.js';
+import { telegramAlert } from './alert/telegram-health.js';
+import { sendTelegram } from './alert/telegram.js';
 if (process.env.NODE_ENV === 'production') {
-    console.log('[env] production mode')
-    const forbidden = ['.env', '.env.production', '.env.local']
+    console.log('[env] production mode');
+    const forbidden = ['.env', '.env.production', '.env.local'];
     for (const f of forbidden) {
-        if (require('fs').existsSync(f)) {
-            console.warn(`[env] ⚠️ file ${f} exists in production`)
+        if (existsSync(f)) {
+            console.warn(`[env] ⚠️ file ${f} exists in production`);
         }
     }
-    const required = ['TG_BOT_TOKEN', 'TG_CHAT_ID']
+    const required = ['TG_BOT_TOKEN', 'TG_CHAT_ID'];
     for (const k of required) {
         if (!process.env[k]) {
-            throw new Error(`[env] missing ${k}`)
+            throw new Error(`[env] missing ${k}`);
         }
     }
 }
-console.log('[ ENV ] >', ENV)
+console.log('[ ENV ] >', ENV);
 /* =======================
  * Metrics setup
  * ======================= */
-const execMetrics = new BasicExecutionMetricsCollector()
-const writeExecMetrics = createExecutionMetricsWriter('./data/metrics/execution-metrics.jsonl')
+const execMetrics = new BasicExecutionMetricsCollector();
+const writeExecMetrics = createExecutionMetricsWriter('./data/metrics/execution-metrics.jsonl');
 async function checkTelegramHealth() {
     try {
-        await sendTelegram(
-            ENV.TG_BOT_TOKEN,
-            ENV.TG_CHAT_ID,
-            `✅ System startup test：${ENV.NODE_ENV} `,
-        )
-        console.log('[telegram] ok')
-    } catch (e) {
-        console.error('[telegram] FAILED', e)
+        await sendTelegram(ENV.TG_BOT_TOKEN, ENV.TG_CHAT_ID, `✅ System startup test：${ENV.NODE_ENV} `);
+        console.log('[telegram] ok');
+    }
+    catch (e) {
+        console.error('[telegram] FAILED', e);
     }
 }
-const METRICS_INTERVAL_MS = 60 * 60 * 1000 // 1h
+const METRICS_INTERVAL_MS = 60 * 60 * 1000; // 1h
 const metricsTimer = setInterval(async () => {
-    const ts = Date.now()
+    const ts = Date.now();
     // 1️⃣ 统一 snapshot（只取一次）
-    const snapshot = execMetrics.snapshot()
+    const snapshot = execMetrics.snapshot();
     // 2️⃣ execution metrics 落盘
     writeExecMetrics({
         ts,
         reason: 'interval',
         snapshot,
-    })
+    });
     // 3️⃣ system health 评估 + 落盘
-    const report = recordSystemHealth(snapshot)
+    const report = recordSystemHealth(snapshot);
     // 4️⃣ 告警
-    consoleAlert(report)
-    await telegramAlert(report)
+    consoleAlert(report);
+    await telegramAlert(report);
     // 5️⃣ 最后 reset（只 reset 一次）
-    execMetrics.reset()
-}, METRICS_INTERVAL_MS)
-metricsTimer.unref()
+    execMetrics.reset();
+}, METRICS_INTERVAL_MS);
+metricsTimer.unref();
 /* =======================
  * Paper log
  * ======================= */
-const writePaper = createJsonlRecorder('./data/paper/ethusdt-paper.jsonl')
-const app = await buildApp()
-let system = null
+const writePaper = createJsonlRecorder('./data/paper/ethusdt-paper.jsonl');
+const app = await buildApp();
+let system = null;
 try {
-    checkTelegramHealth()
+    checkTelegramHealth();
     const paper = new PaperExecutionEngine({
         orderType: 'market',
         maxSlippagePct: 0.0007,
@@ -83,7 +81,7 @@ try {
         minQty: 0.005,
         maxQty: 0.2,
         onResult: (res, signal, ctx) => {
-            const ts = Date.now()
+            const ts = Date.now();
             // ⭐ 1️⃣ execution metrics
             execMetrics.record({
                 ts,
@@ -99,7 +97,7 @@ try {
                     closeTime: ctx.trigger?.closeTime,
                     permissionAllowed: ctx.permission?.allowed,
                 },
-            })
+            });
             // ⭐ 2️⃣ 原始明细
             writePaper({
                 ts,
@@ -107,54 +105,54 @@ try {
                 signal,
                 trigger: ctx.trigger,
                 permission: ctx.permission,
-            })
+            });
         },
-    })
-    const executor = new ShadowExecutionEngine(
-        {
-            minOrderIntervalMs: 5 * 60 * 1000,
-            maxPositionPct: 0.2,
-            maxDailyLossPct: 0.02,
-            maxConsecutiveLosses: 3,
-            warmupMs: 2 * 60 * 1000,
-        },
-        paper,
-    )
+    });
+    const executor = new ShadowExecutionEngine({
+        minOrderIntervalMs: 5 * 60 * 1000,
+        maxPositionPct: 0.2,
+        maxDailyLossPct: 0.02,
+        maxConsecutiveLosses: 3,
+        warmupMs: 2 * 60 * 1000,
+    }, paper);
     system = await bootstrap('live', {
         executor,
-    })
-    await app.listen({ port: ENV.PORT })
-    console.log('🚀 Server running at http://localhost:3000')
-} catch (err) {
-    app.log.error(err)
-    process.exit(1)
+    });
+    await app.listen({ port: ENV.PORT });
+    console.log('🚀 Server running at http://localhost:3000');
+}
+catch (err) {
+    app.log.error(err);
+    process.exit(1);
 }
 /* =======================
  * Graceful shutdown
  * ======================= */
 const shutdown = async (sig) => {
-    console.warn(`[server] ${sig} received, shutting down...`)
+    console.warn(`[server] ${sig} received, shutting down...`);
     try {
-        clearInterval(metricsTimer)
-        const ts = Date.now()
-        const snapshot = execMetrics.snapshot()
+        clearInterval(metricsTimer);
+        const ts = Date.now();
+        const snapshot = execMetrics.snapshot();
         // ⭐ 最后一笔 execution metrics
         writeExecMetrics({
             ts,
             reason: 'shutdown',
             snapshot,
-        })
+        });
         // ⭐ 最后一份 system health
-        const report = recordSystemHealth(snapshot)
-        consoleAlert(report)
-        await telegramAlert(report)
-        execMetrics.reset()
-        await system?.stop?.()
-    } catch (e) {
-        console.error('[server] shutdown error:', e)
-    } finally {
-        process.exit(0)
+        const report = recordSystemHealth(snapshot);
+        consoleAlert(report);
+        await telegramAlert(report);
+        execMetrics.reset();
+        await system?.stop?.();
     }
-}
-process.once('SIGINT', () => void shutdown('SIGINT'))
-process.once('SIGTERM', () => void shutdown('SIGTERM'))
+    catch (e) {
+        console.error('[server] shutdown error:', e);
+    }
+    finally {
+        process.exit(0);
+    }
+};
+process.once('SIGINT', () => void shutdown('SIGINT'));
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
