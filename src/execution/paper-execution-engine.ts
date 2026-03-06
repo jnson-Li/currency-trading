@@ -245,7 +245,7 @@ export class PaperExecutionEngine implements ExecutionEngine {
 function getMarketPriceFromCtx(ctx: StrategyContext): number | null {
     // 最优：5m lastKline.close
     const k = ctx?.m5?.lastKline
-    const p = k?.close ?? (ctx?.m5 as any)?.lastClose ?? (ctx?.m5 as any)?.lastPrice
+    const p = k?.close
     return typeof p === 'number' && Number.isFinite(p) && p > 0 ? p : null
 }
 

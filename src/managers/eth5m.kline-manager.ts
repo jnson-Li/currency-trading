@@ -1,5 +1,5 @@
 import { BaseKlineManager } from './base-kline-manager.js'
-import { Kline } from '@/types/market.js'
+import { Kline, ExecutionSnapshot5m } from '@/types/market.js'
 import { calcEMA, calcATR } from '@/utils/ema.js'
 
 /* ================== Utils ================== */
@@ -26,7 +26,7 @@ function detectSwingIndex(
 
 /* ================== Manager ================== */
 
-export class ETH5mKlineManager extends BaseKlineManager {
+export class ETH5mKlineManager extends BaseKlineManager<'5m'> {
     constructor() {
         super('ETHUSDT', '5m')
     }
@@ -39,6 +39,7 @@ export class ETH5mKlineManager extends BaseKlineManager {
     protected emaSlow?: number
     protected atr14?: number
     protected atrPct?: number
+    protected atrPctSMA?: number
     protected volSMA?: number
 
     // swing structure
@@ -49,7 +50,7 @@ export class ETH5mKlineManager extends BaseKlineManager {
     protected breakoutSignal = { long: false, short: false }
     protected pullbackSignal = { long: false, short: false }
 
-    protected getExtraSnapshot() {
+    protected getExtraSnapshot(): ExecutionSnapshot5m | null {
         if (!this.lastKline) return null
         const last = this.lastKline
 
@@ -67,6 +68,7 @@ export class ETH5mKlineManager extends BaseKlineManager {
 
             atr14: this.atr14,
             atrPct: this.atrPct,
+            atrPctSMA: this.atrPctSMA,
             volSMA: this.volSMA,
 
             wickRatio,
@@ -82,17 +84,30 @@ export class ETH5mKlineManager extends BaseKlineManager {
             },
         }
     }
+
+    protected afterAnalysis(k: Kline) {
+        this.updateSignals()
+    }
+
     private calcVolumeSMA(period = 20): number | undefined {
         if (this.klines.length < period) return undefined
         const vols = this.klines.slice(-period).map((k) => k.volume)
         const sum = vols.reduce((a, b) => a + b, 0)
         return sum / vols.length
     }
-
-    protected afterAnalysis(k: Kline) {
-        this.updateSignals()
+    private calcAtrPctSMA(period = 20): number | undefined {
+        if (this.klines.length < period + 15) return undefined // atr14 需要 warmup
+        // 用最近 period 根的 atrPct 做均值
+        const arr: number[] = []
+        for (let i = this.klines.length - period; i < this.klines.length; i++) {
+            const slice = this.klines.slice(0, i + 1)
+            const atr = calcATR(slice, 14)
+            const close = this.klines[i]?.close
+            if (atr != null && close != null && close > 0) arr.push(atr / close)
+        }
+        if (!arr.length) return undefined
+        return arr.reduce((a, b) => a + b, 0) / arr.length
     }
-
     private updateSignals() {
         if (this.klines.length < 30) return
 
@@ -120,19 +135,19 @@ export class ETH5mKlineManager extends BaseKlineManager {
         const longBias = this.emaFast > this.emaSlow
         const shortBias = this.emaFast < this.emaSlow
         this.volSMA = this.calcVolumeSMA(20)
-
+        this.atrPctSMA = this.calcAtrPctSMA(20)
         // ===== breakout =====
-        if (longBias && this.lastSwingHigh && lastClose > this.lastSwingHigh) {
+        if (longBias && this.lastSwingHigh != null && lastClose > this.lastSwingHigh) {
             this.breakoutSignal.long = true
         }
-        if (shortBias && this.lastSwingLow && lastClose < this.lastSwingLow) {
+        if (shortBias && this.lastSwingLow != null && lastClose < this.lastSwingLow) {
             this.breakoutSignal.short = true
         }
 
         // ===== pullback（收紧条件）=====
         if (
             longBias &&
-            this.lastSwingLow &&
+            this.lastSwingLow != null &&
             lastClose > this.lastSwingLow &&
             lastClose < this.emaFast &&
             lastClose > this.emaSlow
@@ -142,7 +157,7 @@ export class ETH5mKlineManager extends BaseKlineManager {
 
         if (
             shortBias &&
-            this.lastSwingHigh &&
+            this.lastSwingHigh != null &&
             lastClose < this.lastSwingHigh &&
             lastClose > this.emaFast &&
             lastClose < this.emaSlow

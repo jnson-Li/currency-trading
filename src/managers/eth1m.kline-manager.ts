@@ -9,13 +9,13 @@ import type { Interval } from '@/types/market.js'
  * - 不用于方向判断
  * - 用于更快捕捉 5m 级别信号
  */
-export class ETH1mKlineManager extends BaseKlineManager {
-    protected readonly SYMBOL = 'ETHUSDT'
-    protected readonly INTERVAL = '1m'
+export class ETH1mKlineManager extends BaseKlineManager<'1m'> {
     protected readonly HTTP_LIMIT = 100
     protected readonly CACHE_LIMIT = 300
     protected readonly LOG_PREFIX = 'ETH 1m'
-
+    constructor() {
+        super('ETHUSDT', '1m')
+    }
     /**
      * 1m 的历史回溯不宜太多
      * 防止内存压力 + 噪音过大

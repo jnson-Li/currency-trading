@@ -1,7 +1,6 @@
 // strategy/gates.ts
 import type { StrategyContext } from '@/strategy/strategy-context.js'
 import type { TradeSide } from '@/types/strategy.js'
-import type { KlineSnapshot, KlineSnapshotData } from '@/types/market.js'
 
 export type GateResult = { pass: true } | { pass: false; code: string; meta?: any }
 
@@ -13,9 +12,9 @@ export const FAIL = (code: string, meta?: any): GateResult => ({ pass: false, co
  * ✅ now 必须用 m5.lastKline.closeTime（由 StrategyEngine 传入）
  */
 export function gateTrendSwitch(ctx: StrategyContext, side: TradeSide, now: number): GateResult {
-    const h4: KlineSnapshot = ctx.h4
-    const h1: KlineSnapshot = ctx.h1
-    const m15: KlineSnapshot = ctx.m15
+    const h4 = ctx.h4
+    const h1 = ctx.h1
+    const m15 = ctx.m15
 
     // 1) 方向冲突（4h）
     if (side === 'long' && h4?.trend === 'bear')
@@ -72,36 +71,34 @@ export function gateTrendExhaustion(
     side: TradeSide,
     now: number,
 ): GateResult {
-    const h1: KlineSnapshot = ctx.h1
-    if (!h1) return PASS
+    const h4 = ctx.h4
+    const h1 = ctx.h1
+    const m5Close = ctx.m5?.lastKline?.close
 
-    const legs = h1?.legs
-    const swing = h1?.swing
+    if (!h4) return PASS
 
-    // 例：如果你有这些字段，就做衰竭过滤；没有就 PASS
+    // 1) 4h legs ratio：趋势动力衰竭（慢）
+    const legs = h4?.legs
     const impulseAvg = legs?.impulseAvg
     const pullbackAvg = legs?.pullbackAvg
-
-    // 1) 推进/回撤比异常：末端“拉不动”
     if (impulseAvg != null && pullbackAvg != null && pullbackAvg > 0) {
         const ratio = impulseAvg / pullbackAvg
-        // ratio 太低：推进弱、回撤强，容易衰竭（阈值你可调）
         if (ratio < 1.25) {
             return FAIL('EXH_LEGS_WEAK', { ratio, impulseAvg, pullbackAvg, now })
         }
     }
 
-    // 2) 结构破坏迹象（示例）：多头时 lastHL 被跌破、空头时 lastLH 被突破（你字段兼容就行）
-    const lastHL = swing?.lastHL
-    const lastLH = swing?.lastLH
-    const m5Close = ctx.m5?.lastKline?.close
+    // 2) 1h swing break：结构开始破坏（快）
+    const swing1h = h1?.swing
+    const lastHL = swing1h?.lastHL
+    const lastLH = swing1h?.lastLH
 
     if (m5Close != null) {
         if (side === 'long' && lastHL != null && m5Close < lastHL) {
-            return FAIL('EXH_BREAK_LASTHL', { m5Close, lastHL })
+            return FAIL('EXH_BREAK_1H_LASTHL', { m5Close, lastHL, now })
         }
         if (side === 'short' && lastLH != null && m5Close > lastLH) {
-            return FAIL('EXH_BREAK_LASTLH', { m5Close, lastLH })
+            return FAIL('EXH_BREAK_1H_LASTLH', { m5Close, lastLH, now })
         }
     }
 
@@ -112,19 +109,67 @@ export function gateTrendExhaustion(
  * gate 3：高波动过滤（ATR% / 针 / 异常放量）
  * ✅ now 用 m5 closeTime（主要用于 meta/一致性）
  */
-export function gateHighVolatility(ctx: StrategyContext, now: number): GateResult {
-    const m5: KlineSnapshot = ctx.m5
-    const k = m5?.lastKline
-    const close = k?.close ?? 0
-    if (!k || !close) return PASS
 
-    // 1) ATR% 过大（你字段兼容已做，这里就直接用）
+export function gateHighVolatility(ctx: StrategyContext, now?: number): GateResult {
+    const m5 = ctx.m5
+    const k = m5?.lastKline
+    if (!m5 || !k || !k.close) return PASS
+
+    const t = now ?? k.closeTime ?? Date.now()
+
+    // ====== 0) 基础字段 ======
     const atrPct = m5.atrPct
-    if (atrPct != null && atrPct > 0.009) {
-        return FAIL('VOL_ATR_TOO_HIGH', { atrPct, now })
+    const atrPctSMA = m5.atrPctSMA
+
+    // 上级别确认（有就用，没有就当“未确认”）
+    const h1AtrPct = ctx.h1?.atrPct
+    const h4AtrPct = ctx.h4?.atrPct
+
+    // ====== 1) 动态阈值（相对阈值 + 绝对上限兜底） ======
+    // 绝对上限：防极端行情（比如插针/新闻）
+    const ABS_MAX = 0.018 // 1.8%（你可调）
+    if (atrPct != null && atrPct > ABS_MAX) {
+        return FAIL('VOL_ATR_ABS_TOO_HIGH', { atrPct, absMax: ABS_MAX, now: t })
     }
 
-    // 2) 影线过长（针）
+    // 相对阈值：相对自己的“常态波动”
+    // 比如：atrPct > atrPctSMA * 1.8 且 atrPct > 0.009 才算“异常”
+    const REL_FACTOR = 1.8
+    const BASE_MIN = 0.009
+
+    let relSpike = false
+    if (atrPct != null && atrPctSMA != null && atrPctSMA > 0) {
+        const rel = atrPct / atrPctSMA
+        if (rel > REL_FACTOR && atrPct > BASE_MIN) {
+            relSpike = true
+        }
+    }
+
+    // ====== 2) 多周期确认：上级别也在高波动才强拦（减少误杀） ======
+    // 你可以选：h1 确认 或 h4 确认，或者任意一个满足就算 confirmed
+    const H1_CONFIRM = 0.012 // 1.2%
+    const H4_CONFIRM = 0.01 // 1.0%
+    const confirmed =
+        (h1AtrPct != null && h1AtrPct > H1_CONFIRM) || (h4AtrPct != null && h4AtrPct > H4_CONFIRM)
+
+    // 策略：动态触发时，如果上级别也确认 -> FAIL；否则只记录不拦（或轻拦）
+    if (relSpike && confirmed) {
+        return FAIL('VOL_ATR_REL_SPIKE_CONFIRMED', {
+            atrPct,
+            atrPctSMA,
+            rel: atrPctSMA && atrPct ? atrPct / atrPctSMA : null,
+            h1AtrPct,
+            h4AtrPct,
+            now: t,
+        })
+    }
+
+    // 如果你想“轻拦”：relSpike 但没 confirmed 也挡掉，就打开这段：
+    // if (relSpike && !confirmed) {
+    //   return FAIL('VOL_ATR_REL_SPIKE', { atrPct, atrPctSMA, h1AtrPct, h4AtrPct, now: t })
+    // }
+
+    // ====== 3) 影线过长（针） ======
     const body = Math.abs(k.close - k.open)
     const range = Math.max(1e-9, k.high - k.low)
     const upperWick = k.high - Math.max(k.open, k.close)
@@ -133,15 +178,15 @@ export function gateHighVolatility(ctx: StrategyContext, now: number): GateResul
     const bodyRatio = body / range
     const wickRatio = (upperWick + lowerWick) / range
     if (bodyRatio < 0.22 && wickRatio > 0.78) {
-        return FAIL('VOL_WICK_SPIKE', { bodyRatio, wickRatio, now })
+        return FAIL('VOL_WICK_SPIKE', { bodyRatio, wickRatio, now: t })
     }
 
-    // 3) 异常放量
+    // ====== 4) 异常放量 ======
     const volume = k.volume
     const volSMA = m5.volSMA
     if (volume != null && volSMA != null && volSMA > 0) {
         const v = volume / volSMA
-        if (v > 3.2) return FAIL('VOL_VOLUME_SPIKE', { v, now })
+        if (v > 3.2) return FAIL('VOL_VOLUME_SPIKE', { v, now: t })
     }
 
     return PASS

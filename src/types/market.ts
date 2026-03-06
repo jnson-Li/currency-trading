@@ -73,69 +73,116 @@ export interface MidConfirmation {
  * ===== 核心 Snapshot =====
  */
 
-export interface BaseKlineSnapshot {
+export interface BaseKlineSnapshot<I extends Interval = Interval> {
     symbol: string
-    interval: Interval
+    interval: I
     level: IntervalLevel
 
     lastKline: Kline
     lastConfirmedCloseTime?: number
+
     ready: boolean
     cacheSize: number
     timeHealth: TimeHealth
+
+    trend: Trend
+    structure: Structure
+
     updatedAt: number
 }
 
-export interface AnalysisSnapshot {
-    trend?: Trend
-    structure?: Structure
-
-    atr14?: number
-    atrPct?: number
-
-    emaFast?: number
-    emaSlow?: number
-    ema21?: number
-    ema34?: number
-
-    swing?: {
-        lastHH?: number
-        lastHL?: number
-        lastLH?: number
-        lastLL?: number
-        high?: number
-        low?: number
-    }
-
-    lastStructureChangeAt?: number
+export interface BaseExecutionSnapshot {
+    atr14: number | undefined
+    atrPct: number | undefined
 }
+export interface ExecutionSnapshot5m extends BaseExecutionSnapshot {
+    emaFast: number | undefined
+    emaSlow: number | undefined
+    atrPctSMA: number | undefined
+    volSMA: number | undefined
+    wickRatio: number | undefined
 
-export interface ExecutionSnapshot {
-    entry?: {
-        breakout?: { long: boolean; short: boolean }
-        pullback?: { long: boolean; short: boolean }
+    swing: {
+        high: number | undefined
+        low: number | undefined
     }
 
-    atrPct?: number
-    wickRatio?: number
-    bodyRatio?: number
+    entry: {
+        breakout: { long: boolean; short: boolean }
+        pullback: { long: boolean; short: boolean }
+    }
+}
+export interface ExecutionSnapshot15m extends BaseExecutionSnapshot {
+    ema21: number | undefined
+    wickRatio: number | undefined
+    bodyRatio: number | undefined
 
-    pending?: {
+    swing: {
+        high: number | undefined
+        low: number | undefined
+    }
+
+    pending: {
         structure: Structure
         count: number
     }
+    lastStructureChangeAt: number | undefined
+}
+export interface ExecutionSnapshot1h extends BaseExecutionSnapshot {
+    ema21: number | undefined
 
+    swing: {
+        lastHH: number | undefined
+        lastHL: number | undefined
+        lastLH: number | undefined
+        lastLL: number | undefined
+    }
+
+    pending: {
+        structure: Structure
+        count: number
+    }
+    lastStructureChangeAt: number | undefined
+}
+export interface ExecutionSnapshot4h extends BaseExecutionSnapshot {
+    ema34: number | undefined
+
+    swing: {
+        lastHH: number | undefined
+        lastHL: number | undefined
+        lastLH: number | undefined
+        lastLL: number | undefined
+    }
     legs?: {
         impulseAvg?: number
         pullbackAvg?: number
     }
-
-    volSMA?: number
+    pending: {
+        structure: Structure
+        count: number
+    }
+    lastStructureChangeAt: number | undefined
 }
 
-export interface KlineSnapshotData extends BaseKlineSnapshot, AnalysisSnapshot, ExecutionSnapshot {}
+export type SnapshotExtraMap = {
+    '5m': ExecutionSnapshot5m | null
+    '15m': ExecutionSnapshot15m | null
+    '1h': ExecutionSnapshot1h | null
+    '4h': ExecutionSnapshot4h | null
+    // 未来：'1d': ExecutionSnapshot1d ...
+}
+
+export type KlineSnapshotData<I extends keyof SnapshotExtraMap = keyof SnapshotExtraMap> =
+    BaseKlineSnapshot<I> & SnapshotExtraMap[I]
 
 export type KlineSnapshot = KlineSnapshotData | null
+
+export type CoordinatorSnapshots = {
+    '5m': KlineSnapshotData<'5m'> | null
+    '15m': KlineSnapshotData<'15m'> | null
+    '1h': KlineSnapshotData<'1h'> | null
+    '4h': KlineSnapshotData<'4h'> | null
+}
 
 import type {
     ETH5mKlineManager,

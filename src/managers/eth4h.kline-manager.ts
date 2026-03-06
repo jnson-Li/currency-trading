@@ -1,5 +1,5 @@
 import { BaseKlineManager } from './base-kline-manager.js'
-import { Kline } from '@/types/market.js'
+import { Kline, ExecutionSnapshot4h } from '@/types/market.js'
 import { findSwings } from '@/utils/swing.js'
 import { calcEMA, calcATR } from '@/utils/ema.js'
 
@@ -10,6 +10,7 @@ type Structure = 'hh_hl' | 'lh_ll' | 'range'
  * 用 swings 估算最近几段“推进/回调”均值（用于衰竭 gate）
  * - bull: impulse = HL->HH，pullback = HH->HL
  * - bear: impulse = LH->LL，pullback = LL->LH
+ * 趋势衰竭判断
  */
 function calcLegStats(params: {
     highs: number[]
@@ -61,7 +62,7 @@ function calcLegStats(params: {
     }
 }
 
-export class ETH4hKlineManager extends BaseKlineManager {
+export class ETH4hKlineManager extends BaseKlineManager<'4h'> {
     constructor() {
         super('ETHUSDT', '4h')
     }
@@ -134,6 +135,7 @@ export class ETH4hKlineManager extends BaseKlineManager {
 
     private updateStructureAndLegs() {
         const { highs, lows } = findSwings(this.klines, 5)
+        // 高或低都小于两个根，则无结构
         if (highs.length < 2 || lows.length < 2) {
             this.applyStableStructure('range')
             this.legs = {}
@@ -190,11 +192,8 @@ export class ETH4hKlineManager extends BaseKlineManager {
 
     /* ================= snapshot ================= */
 
-    protected getExtraSnapshot() {
+    protected getExtraSnapshot(): ExecutionSnapshot4h {
         return {
-            trend: this.trend,
-            structure: this.structure,
-
             ema34: this.ema34,
             atr14: this.atr14,
             atrPct: this.atrPct,

@@ -1,6 +1,15 @@
 // utils/swing.ts
 import type { Kline } from '@/types/market.js'
 
+/**取当前K线左右各3根
+如果当前high >= 这7根里面所有high
+→ 它是 swing high
+
+如果当前low <= 这7根里面所有low
+→ 它是 swing low
+
+趋势拐点
+ */
 export function findSwings(klines: Kline[], lookback: number): { highs: number[]; lows: number[] } {
     const highs: number[] = []
     const lows: number[] = []

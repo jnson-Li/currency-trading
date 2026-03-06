@@ -2,7 +2,7 @@ import type { ExecutionEngine, ExecutionResult } from '@/types/execution.js'
 import type { TradeSignalBase } from '@/types/strategy.js'
 import type { StrategyContext } from '@/strategy/strategy-context.js'
 import { EXEC_REASON } from '@/execution/execution-reject-reasons.js'
-
+import type { ExecRejectReason } from '@/execution/execution-reject-reasons.js'
 export interface LiveRiskConfig {
     minOrderIntervalMs: number
     maxPositionPct: number
@@ -28,11 +28,14 @@ export class LiveExecutionEngine implements ExecutionEngine {
 
     async execute(signal: TradeSignalBase, ctx: StrategyContext): Promise<ExecutionResult> {
         const now = Date.now()
-        const signalId = `SIG:${signal.symbol}:${signal.side}:${ctx.trigger?.closeTime ?? signal.createdAt}`
+
+        const signalId = `SIG:${signal.symbol}:${signal.side}:${
+            ctx.trigger?.closeTime ?? signal.createdAt
+        }`
 
         /* ========= 0️⃣ 冷启动 ========= */
         if (now - this.startedAt < this.cfg.warmupMs) {
-            return this.reject(signalId, EXEC_REASON.WARMUP_PERIOD)
+            return this.reject(signalId, EXEC_REASON.WARM_UP_PERIOD)
         }
 
         /* ========= 1️⃣ 幂等 ========= */
@@ -40,7 +43,7 @@ export class LiveExecutionEngine implements ExecutionEngine {
             return this.reject(signalId, EXEC_REASON.ORDER_TOO_FREQUENT)
         }
 
-        /* ========= 2️⃣ 频率 ========= */
+        /* ========= 2️⃣ 频率限制 ========= */
         const last = this.lastOrderAtBySymbol.get(signal.symbol)
         if (last && now - last < this.cfg.minOrderIntervalMs) {
             return this.reject(signalId, EXEC_REASON.ORDER_TOO_FREQUENT)
@@ -59,11 +62,21 @@ export class LiveExecutionEngine implements ExecutionEngine {
             return this.reject(signalId, EXEC_REASON.CONSECUTIVE_LOSS_LIMIT)
         }
 
-        /* ========= 5️⃣ 通过风控 → 执行 ========= */
-        return this.executeAfterRisk(signalId, signal, ctx)
+        /* ========= 5️⃣ 风控通过 → 锁定状态 ========= */
+        this.executedSignalIds.add(signalId)
+        this.lastOrderAtBySymbol.set(signal.symbol, now)
+
+        /* ========= 6️⃣ 真正执行 ========= */
+        try {
+            const res = await this.executeAfterRisk(signalId, signal, ctx)
+
+            return res
+        } catch (e) {
+            return this.reject(signalId, EXEC_REASON.EXECUTION_ERROR)
+        }
     }
 
-    /** 👉 给 Shadow / Live 重写 */
+    /** 👉 由 Live / Shadow 重写 */
     protected async executeAfterRisk(
         signalId: string,
         signal: TradeSignalBase,
@@ -72,11 +85,28 @@ export class LiveExecutionEngine implements ExecutionEngine {
         throw new Error('executeAfterRisk not implemented')
     }
 
-    protected reject(signalId: string, reason: string): ExecutionResult {
+    protected reject(signalId: string, reason: ExecRejectReason): ExecutionResult {
         return {
             signalId,
             accepted: false,
             reason,
         }
+    }
+
+    /* ========= 可选：实盘统计更新 ========= */
+
+    protected recordWin() {
+        this.consecutiveLosses = 0
+    }
+
+    protected recordLoss(lossAmount: number) {
+        this.consecutiveLosses++
+        this.realizedPnlToday += lossAmount
+    }
+
+    protected resetDaily(equity: number) {
+        this.dayStartEquity = equity
+        this.realizedPnlToday = 0
+        this.consecutiveLosses = 0
     }
 }

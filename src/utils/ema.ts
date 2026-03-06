@@ -1,6 +1,8 @@
 // utils/ema.ts
 import { Kline } from '@/types/market.js'
-
+/**如果 EMA 是“方向”，
+那 ATR 是“强度”
+*/
 export function calcEMA(values: number[], period: number): number | null {
     if (values.length < period) return null
 
@@ -13,6 +15,9 @@ export function calcEMA(values: number[], period: number): number | null {
 
     return ema
 }
+/**如果 EMA 是“方向”，
+那 ATR 是“强度”
+*/
 export function calcATR(klines: Kline[], period: number): number | null {
     if (klines.length < period + 1) return null
     let sum = 0

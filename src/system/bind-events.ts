@@ -58,7 +58,7 @@ export function bindEvents(
                 '15m': m15.getSnapshot(),
                 '1h': h1.getSnapshot(),
                 '4h': h4.getSnapshot(),
-            } as any)
+            })
         }
 
         // 关键：推迟到 next tick，尽量让同一批更新先把 15m/1h/4h 的 snapshot 更新好

@@ -1,14 +1,12 @@
 // execution/execution-metrics.types.ts
-import type { TradeSignalBase } from '@/types/strategy.js'
-import type { StrategyContext } from '@/strategy/strategy-context.js'
-import type { ExecutionResult } from '@/types/execution.js'
+import { ExecRejectReason } from '@/execution/execution-reject-reasons.js'
 
 export interface ExecutionEvent {
     ts: number
 
     // 核心结果
     accepted: boolean
-    reason: string
+    reason: ExecRejectReason
 
     // 标识
     signalId: string

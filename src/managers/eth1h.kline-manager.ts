@@ -1,12 +1,12 @@
 import { BaseKlineManager } from './base-kline-manager.js'
-import { Kline } from '@/types/market.js'
-import { calcEMA } from '@/utils/ema.js'
+import { Kline, ExecutionSnapshot1h } from '@/types/market.js'
+import { calcEMA, calcATR } from '@/utils/ema.js'
 import { findSwings } from '@/utils/swing.js'
 
 type Trend = 'bull' | 'bear' | 'range'
 type Structure = 'hh_hl' | 'lh_ll' | 'range'
 
-export class ETH1hKlineManager extends BaseKlineManager {
+export class ETH1hKlineManager extends BaseKlineManager<'1h'> {
     constructor() {
         super('ETHUSDT', '1h')
     }
@@ -20,6 +20,8 @@ export class ETH1hKlineManager extends BaseKlineManager {
 
     // ===== 指标 =====
     protected ema21?: number
+    protected atr14?: number
+    protected atrPct?: number
 
     // ===== 结构关键点 =====
     protected lastHH?: number
@@ -37,8 +39,15 @@ export class ETH1hKlineManager extends BaseKlineManager {
 
         this.updateTrend()
         this.updateStructure()
+        this.updateIndicators()
     }
+    /* ================= 指标 ================= */
 
+    private updateIndicators() {
+        const last = this.klines[this.klines.length - 1]
+        this.atr14 = calcATR(this.klines, 14) ?? undefined
+        this.atrPct = this.atr14 && last?.close ? this.atr14 / last.close : undefined
+    }
     /* ================= 趋势（稳态） ================= */
 
     private updateTrend() {
@@ -112,9 +121,11 @@ export class ETH1hKlineManager extends BaseKlineManager {
 
     /* ================= snapshot ================= */
 
-    protected getExtraSnapshot() {
+    protected getExtraSnapshot(): ExecutionSnapshot1h {
         return {
             ema21: this.ema21,
+            atr14: this.atr14,
+            atrPct: this.atrPct,
 
             // 结构破坏 / gate 使用
             swing: {

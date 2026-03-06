@@ -2,6 +2,7 @@
 import type { TradeSignal, TradeSide, TradeSignalBase } from '@/types/strategy.js'
 import type { StrategyContext } from './strategy-context.js'
 import { gateTrendSwitch, gateHighVolatility, gateTrendExhaustion } from '@/strategy/gates.js'
+import type { KlineSnapshot, KlineSnapshotData } from '@/types/market.js'
 
 export type RejectStage =
     | 'permission'
@@ -113,7 +114,7 @@ export class StrategyEngine {
         return null
     }
 
-    private getDirectionalBias(s4: any): TradeSide | null {
+    private getDirectionalBias(s4: KlineSnapshotData<'4h'> | null): TradeSide | null {
         if (!s4) return null
         if (s4.trend === 'bull') return 'long'
         if (s4.trend === 'bear') return 'short'
@@ -126,7 +127,7 @@ export class StrategyEngine {
      * - short：如果 h1.structure 明确是 hh_hl（多头结构） => false
      * - range/undefined => 放行（交给 gate 再做严格）
      */
-    private confirmStructureLight(h1: any, side: TradeSide): boolean {
+    private confirmStructureLight(h1: KlineSnapshotData<'1h'> | null, side: TradeSide): boolean {
         if (!h1) return true // 让 gate 决定是否必须有
         const st = h1.structure
         if (!st) return true
@@ -142,7 +143,7 @@ export class StrategyEngine {
      * - short：m15.trend=bull 或 m15.structure=hh_hl => false
      * - range/undefined => 放行（严格交给 gate）
      */
-    private confirmMidframeLight(m15: any, side: TradeSide): boolean {
+    private confirmMidframeLight(m15: KlineSnapshotData<'15m'> | null, side: TradeSide): boolean {
         if (!m15) return true
         const t = m15.trend
         const st = m15.structure
@@ -162,19 +163,24 @@ export class StrategyEngine {
         return true
     }
 
-    private findEntry(s5: any, side: TradeSide) {
+    private findEntry(s5: KlineSnapshotData<'5m'> | null, side: TradeSide) {
         if (!s5) return null
         const entry = s5.entry
         if (!entry) return null
-
+        const pullback = entry.pullback?.[side]
+        const breakout = entry.breakout?.[side]
         if (side === 'long') {
-            if (entry.pullback) return { confidence: 0.72, reason: 'pullback long' }
-            if (entry.breakout) return { confidence: 0.68, reason: 'breakout long' }
+            // 回调做多
+            if (pullback) return { confidence: 0.72, reason: 'pullback long' }
+            // 突破做多
+            if (breakout) return { confidence: 0.68, reason: 'breakout long' }
         }
 
         if (side === 'short') {
-            if (entry.pullback) return { confidence: 0.72, reason: 'pullback short' }
-            if (entry.breakout) return { confidence: 0.68, reason: 'breakout short' }
+            // 回调做空
+            if (pullback) return { confidence: 0.72, reason: 'pullback short' }
+            // 突破做空
+            if (breakout) return { confidence: 0.68, reason: 'breakout short' }
         }
 
         return null

@@ -1,5 +1,5 @@
 import { BaseKlineManager } from './base-kline-manager.js'
-import { Kline } from '@/types/market.js'
+import { Kline, ExecutionSnapshot15m } from '@/types/market.js'
 import { calcEMA } from '@/utils/ema.js'
 import { findSwings } from '@/utils/swing.js'
 
@@ -22,7 +22,7 @@ function calcATR(klines: Kline[], period: number): number | null {
     return sum / period
 }
 
-export class ETH15mKlineManager extends BaseKlineManager {
+export class ETH15mKlineManager extends BaseKlineManager<'15m'> {
     constructor() {
         super('ETHUSDT', '15m')
     }
@@ -146,10 +146,10 @@ export class ETH15mKlineManager extends BaseKlineManager {
 
     /* ========= snapshot 扩展 ========= */
 
-    protected getExtraSnapshot() {
+    protected getExtraSnapshot(): ExecutionSnapshot15m | null {
         const last = this.lastKline
         if (!last) {
-            return {}
+            return null
         }
 
         const body = Math.abs(last.close - last.open)

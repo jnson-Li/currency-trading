@@ -1,12 +1,11 @@
 // execution/execution-metrics-collector.ts
 import type { ExecutionEvent } from './execution-metrics.types.js'
+import { ExecRejectReason } from '@/execution/execution-reject-reasons.js'
+
+export type MetricBucket = { count: number; accepted: number; rejected: number }
 
 export interface ExecutionMetricsSnapshot {
-    window: {
-        from: number
-        to: number
-    }
-
+    window: { from: number; to: number }
     totals: {
         count: number
         accepted: number
@@ -14,23 +13,9 @@ export interface ExecutionMetricsSnapshot {
         acceptanceRate: number
     }
 
-    byReason: Record<
-        string,
-        {
-            count: number
-            accepted: number
-            rejected: number
-        }
-    >
+    byReason: Partial<Record<ExecRejectReason, MetricBucket>>
 
-    bySymbol: Record<
-        string,
-        {
-            count: number
-            accepted: number
-            rejected: number
-        }
-    >
+    bySymbol: Record<string, MetricBucket>
 }
 
 export interface ExecutionMetricsCollector {

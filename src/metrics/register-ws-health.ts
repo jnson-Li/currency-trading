@@ -2,8 +2,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { BaseKlineManager } from '@/managers/base-kline-manager.js'
 import { startWsHealthReporter } from './ws-health-reporter.js'
+import type { Managers } from '@/types/market.js'
 
 interface RegisterWsHealthOptions {
     intervalMs: number
@@ -15,10 +15,7 @@ function ensureDir(dir: string) {
     fs.mkdirSync(dir, { recursive: true })
 }
 
-export function registerWsHealthForManagers(
-    managers: Record<string, BaseKlineManager>,
-    opts: RegisterWsHealthOptions,
-) {
+export function registerWsHealthForManagers(managers: Managers, opts: RegisterWsHealthOptions) {
     const outputDir = path.resolve(opts.outputDir)
     ensureDir(outputDir)
 

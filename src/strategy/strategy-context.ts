@@ -1,5 +1,5 @@
 // strategy/strategy-context.ts
-import type { Interval, KlineSnapshot } from '@/types/market.js'
+import type { Interval, KlineSnapshot, KlineSnapshotData } from '@/types/market.js'
 
 export type StrategyPermission = {
     allowed: boolean
@@ -34,10 +34,10 @@ export type StrategyContext = {
     // snapshots: StrategySnapshots
 
     // 为了兼容你旧逻辑，直接把常用字段平铺出来（可选）
-    m5: KlineSnapshot
-    m15: KlineSnapshot
-    h1: KlineSnapshot
-    h4: KlineSnapshot
+    m5: KlineSnapshotData<'5m'> | null
+    m15: KlineSnapshotData<'15m'> | null
+    h1: KlineSnapshotData<'1h'> | null
+    h4: KlineSnapshotData<'4h'> | null
 
     createdAt?: number
     meta?: Record<string, any>

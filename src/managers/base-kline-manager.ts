@@ -8,6 +8,9 @@ import {
     Structure,
     Trend,
     Interval,
+    TimeHealth,
+    SnapshotExtraMap,
+    KlineSnapshotData,
 } from '@/types/market.js'
 import { wsProxyAgent } from '@/infra/proxy.js'
 import { intervalToMs } from '@/utils/interval.js'
@@ -15,15 +18,16 @@ import { WsHealthCollector } from '@/metrics/ws-health-collector.js'
 import type { WsHealthSnapshot } from '@/types/coordinator.js'
 const INTERVAL_LEVEL_MAP: Record<string, IntervalLevel> = {
     '5m': 'L1',
+    '15m': 'L1',
     '1h': 'L2',
     '4h': 'L3',
 }
 
-export abstract class BaseKlineManager {
+export abstract class BaseKlineManager<I extends keyof SnapshotExtraMap> {
     /* ========= 子类必须实现 ========= */
 
     protected readonly SYMBOL: string
-    protected readonly INTERVAL: Interval | '1m'
+    protected readonly INTERVAL: I
     protected abstract readonly HTTP_LIMIT: number
     protected abstract readonly CACHE_LIMIT: number
     protected abstract readonly LOG_PREFIX: string
@@ -50,7 +54,7 @@ export abstract class BaseKlineManager {
     private readonly MAX_RECONNECT_DELAY = 30_000
     private heartbeatTimer?: NodeJS.Timeout
     private lastMessageTs = 0
-    protected timeHealth: 'healthy' | 'warning' | 'broken' = 'healthy'
+    protected timeHealth: TimeHealth = 'healthy'
     protected lastResyncTs = 0
     private reconnectTimer?: NodeJS.Timeout
     private resyncing = false
@@ -58,7 +62,7 @@ export abstract class BaseKlineManager {
 
     protected wsHealth!: WsHealthCollector
 
-    constructor(symbol: string, interval: Interval) {
+    constructor(symbol: string, interval: I) {
         this.SYMBOL = symbol
         this.INTERVAL = interval
         this.wsHealth = new WsHealthCollector(symbol, interval)
@@ -392,16 +396,15 @@ export abstract class BaseKlineManager {
         }
     }
 
-    protected getExtraSnapshot(): Record<string, any> | null {
-        return {}
-    }
+    // ✅ 这里必须返回 “对应 interval 的 extra”
+    protected abstract getExtraSnapshot(): SnapshotExtraMap[I]
 
-    public getSnapshot(): KlineSnapshot {
+    public getSnapshot(): KlineSnapshotData<I> | null {
         if (!this.lastKline) return null
 
         return {
             symbol: this.SYMBOL,
-            interval: this.INTERVAL as any,
+            interval: this.INTERVAL,
             level: INTERVAL_LEVEL_MAP[this.INTERVAL],
 
             lastKline: this.lastKline,
@@ -414,9 +417,8 @@ export abstract class BaseKlineManager {
             trend: this.trend,
             structure: this.structure,
 
-            ...this.getExtraSnapshot(), //  5m / 15m 扩展
-
             updatedAt: Date.now(),
+            ...this.getExtraSnapshot(), //  5m / 15m 扩展
         }
     }
 

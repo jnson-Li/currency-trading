@@ -1,11 +1,10 @@
 import type { TradeSignalBase } from '@/types/strategy.js'
 import type { StrategyContext } from '@/strategy/strategy-context.js'
-
+import type { ExecRejectReason } from '@/execution/execution-reject-reasons.js'
 export interface ExecutionResult {
     signalId: string
     accepted: boolean
-    reason: string
-
+    reason: ExecRejectReason
     symbol?: string
     side?: 'long' | 'short'
     orderType?: 'market' | 'limit'
