@@ -5,6 +5,7 @@ import { intervalToMs } from '../utils/interval.js';
 import { WsHealthCollector } from '../metrics/ws-health-collector.js';
 const INTERVAL_LEVEL_MAP = {
     '5m': 'L1',
+    '15m': 'L1',
     '1h': 'L2',
     '4h': 'L3',
 };
@@ -312,9 +313,6 @@ export class BaseKlineManager {
             this.klines = this.klines.slice(-this.CACHE_LIMIT);
         }
     }
-    getExtraSnapshot() {
-        return {};
-    }
     getSnapshot() {
         if (!this.lastKline)
             return null;
@@ -329,8 +327,8 @@ export class BaseKlineManager {
             timeHealth: this.timeHealth,
             trend: this.trend,
             structure: this.structure,
-            ...this.getExtraSnapshot(), //  5m / 15m 扩展
             updatedAt: Date.now(),
+            ...this.getExtraSnapshot(), //  5m / 15m 扩展
         };
     }
     /* ========= 提供给子类的辅助 ========= */

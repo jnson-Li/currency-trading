@@ -122,7 +122,7 @@ export class ETH15mKlineManager extends BaseKlineManager {
     getExtraSnapshot() {
         const last = this.lastKline;
         if (!last) {
-            return {};
+            return null;
         }
         const body = Math.abs(last.close - last.open);
         const range = Math.max(1e-9, last.high - last.low);

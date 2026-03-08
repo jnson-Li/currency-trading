@@ -1,5 +1,5 @@
 import { BaseKlineManager } from './base-kline-manager.js';
-import { calcEMA } from '../utils/ema.js';
+import { calcEMA, calcATR } from '../utils/ema.js';
 import { findSwings } from '../utils/swing.js';
 export class ETH1hKlineManager extends BaseKlineManager {
     constructor() {
@@ -13,6 +13,8 @@ export class ETH1hKlineManager extends BaseKlineManager {
     structure = 'range';
     // ===== 指标 =====
     ema21;
+    atr14;
+    atrPct;
     // ===== 结构关键点 =====
     lastHH;
     lastHL;
@@ -27,6 +29,13 @@ export class ETH1hKlineManager extends BaseKlineManager {
             return;
         this.updateTrend();
         this.updateStructure();
+        this.updateIndicators();
+    }
+    /* ================= 指标 ================= */
+    updateIndicators() {
+        const last = this.klines[this.klines.length - 1];
+        this.atr14 = calcATR(this.klines, 14) ?? undefined;
+        this.atrPct = this.atr14 && last?.close ? this.atr14 / last.close : undefined;
     }
     /* ================= 趋势（稳态） ================= */
     updateTrend() {
@@ -94,6 +103,8 @@ export class ETH1hKlineManager extends BaseKlineManager {
     getExtraSnapshot() {
         return {
             ema21: this.ema21,
+            atr14: this.atr14,
+            atrPct: this.atrPct,
             // 结构破坏 / gate 使用
             swing: {
                 lastHH: this.lastHH,

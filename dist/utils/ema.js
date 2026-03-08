@@ -1,3 +1,6 @@
+/**如果 EMA 是“方向”，
+那 ATR 是“强度”
+*/
 export function calcEMA(values, period) {
     if (values.length < period)
         return null;
@@ -8,6 +11,9 @@ export function calcEMA(values, period) {
     }
     return ema;
 }
+/**如果 EMA 是“方向”，
+那 ATR 是“强度”
+*/
 export function calcATR(klines, period) {
     if (klines.length < period + 1)
         return null;

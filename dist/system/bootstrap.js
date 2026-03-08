@@ -13,7 +13,7 @@ class NoopExecutionEngine {
             return {
                 signalId: 'invalid_signal',
                 accepted: false,
-                reason: 'INVALID_SIGNAL',
+                reason: 'NOOP_INVALID_SIGNAL',
             };
         }
         return {
@@ -72,10 +72,10 @@ export async function bootstrap(mode, opts) {
         executed: 0,
     };
     const managers = {
-        '5m': m5,
-        '15m': m15,
-        '1h': h1,
-        '4h': h4,
+        m5,
+        m15,
+        h1,
+        h4,
     };
     // ⭐ 一次性注册
     const wsHealthRegistry = registerWsHealthForManagers(managers, {
@@ -170,6 +170,7 @@ export async function bootstrap(mode, opts) {
             // === evaluate ===
             const signal = strategyEngine.evaluate(ctx);
             if (!signal) {
+                // 不可交易信号，目前只记录这个
                 rejectStats.record({
                     signalEmitted: false,
                     reject: strategyEngine.lastReject,
@@ -180,6 +181,7 @@ export async function bootstrap(mode, opts) {
                 });
                 return;
             }
+            // 触发交易信号
             rejectStats.record({
                 signalEmitted: true,
                 meta: {
@@ -195,7 +197,7 @@ export async function bootstrap(mode, opts) {
                 const res = await executor.execute(signal, ctx);
                 metrics.executed += 1;
                 // 你想的话可以少量打印
-                console.log('[exec]', res);
+                // console.log('[exec]', res)
             }
             catch (e) {
                 metrics.errors += 1;
@@ -215,7 +217,7 @@ export async function bootstrap(mode, opts) {
             executed: metrics.executed,
             errors: metrics.errors,
         });
-    }, 60 * 60 * 1000); // 1小时
+    }, 3 * 60 * 60 * 1000); // 3小时
     metricsTimer.unref?.();
     let stopping = false;
     const stop = async () => {

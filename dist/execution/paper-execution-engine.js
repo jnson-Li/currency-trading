@@ -178,7 +178,7 @@ export class PaperExecutionEngine {
 function getMarketPriceFromCtx(ctx) {
     // 最优：5m lastKline.close
     const k = ctx?.m5?.lastKline;
-    const p = k?.close ?? ctx?.m5?.lastClose ?? ctx?.m5?.lastPrice;
+    const p = k?.close;
     return typeof p === 'number' && Number.isFinite(p) && p > 0 ? p : null;
 }
 function makeSignalId(signal, ctx) {

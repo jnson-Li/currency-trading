@@ -5,6 +5,7 @@ import { calcEMA, calcATR } from '../utils/ema.js';
  * 用 swings 估算最近几段“推进/回调”均值（用于衰竭 gate）
  * - bull: impulse = HL->HH，pullback = HH->HL
  * - bear: impulse = LH->LL，pullback = LL->LH
+ * 趋势衰竭判断
  */
 function calcLegStats(params) {
     const { highs, lows, side, n = 3 } = params;
@@ -113,6 +114,7 @@ export class ETH4hKlineManager extends BaseKlineManager {
     /* ================= 结构（稳态）+ 衰竭 legs ================= */
     updateStructureAndLegs() {
         const { highs, lows } = findSwings(this.klines, 5);
+        // 高或低都小于两个根，则无结构
         if (highs.length < 2 || lows.length < 2) {
             this.applyStableStructure('range');
             this.legs = {};
@@ -166,8 +168,6 @@ export class ETH4hKlineManager extends BaseKlineManager {
     /* ================= snapshot ================= */
     getExtraSnapshot() {
         return {
-            trend: this.trend,
-            structure: this.structure,
             ema34: this.ema34,
             atr14: this.atr14,
             atrPct: this.atrPct,

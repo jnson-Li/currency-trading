@@ -136,16 +136,22 @@ export class StrategyEngine {
         const entry = s5.entry;
         if (!entry)
             return null;
+        const pullback = entry.pullback?.[side];
+        const breakout = entry.breakout?.[side];
         if (side === 'long') {
-            if (entry.pullback)
+            // 回调做多
+            if (pullback)
                 return { confidence: 0.72, reason: 'pullback long' };
-            if (entry.breakout)
+            // 突破做多
+            if (breakout)
                 return { confidence: 0.68, reason: 'breakout long' };
         }
         if (side === 'short') {
-            if (entry.pullback)
+            // 回调做空
+            if (pullback)
                 return { confidence: 0.72, reason: 'pullback short' };
-            if (entry.breakout)
+            // 突破做空
+            if (breakout)
                 return { confidence: 0.68, reason: 'breakout short' };
         }
         return null;

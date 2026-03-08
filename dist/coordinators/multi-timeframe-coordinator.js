@@ -26,10 +26,10 @@ export class MultiTimeframeCoordinator {
     /**
      * bind-events 会在「5m 收盘」时调用这里
      */
-    on5mClosed(kline) {
-        if (!kline)
+    on5mClosed(snapshot) {
+        if (!snapshot)
             return null;
-        const m5 = kline['5m'];
+        const m5 = snapshot['5m'];
         const closeTime = m5?.lastKline?.closeTime;
         if (typeof closeTime !== 'number' || !Number.isFinite(closeTime)) {
             this.log?.warn?.('[coordinator] invalid 5m closeTime', { closeTime });
@@ -41,7 +41,7 @@ export class MultiTimeframeCoordinator {
         this.lastClosed['5m'] = closeTime;
         // ① 重新计算 Decision
         const now = Date.now();
-        const decision = this.recomputeDecision(kline, now);
+        const decision = this.recomputeDecision(snapshot, now);
         // ② 生成 state（用于 StrategyEngine）
         this.lastState = {
             symbol: this.opts.symbol,
@@ -49,10 +49,10 @@ export class MultiTimeframeCoordinator {
                 interval: '5m',
                 closeTime,
             },
-            m5: kline['5m'],
-            m15: kline['15m'],
-            h1: kline['1h'],
-            h4: kline['4h'],
+            m5: snapshot['5m'],
+            m15: snapshot['15m'],
+            h1: snapshot['1h'],
+            h4: snapshot['4h'],
             createdAt: closeTime,
             permission: decision,
             lastClosed: { ...this.lastClosed },

@@ -30,6 +30,7 @@ export class ETH5mKlineManager extends BaseKlineManager {
     emaSlow;
     atr14;
     atrPct;
+    atrPctSMA;
     volSMA;
     // swing structure
     lastSwingHigh;
@@ -52,6 +53,7 @@ export class ETH5mKlineManager extends BaseKlineManager {
             emaSlow: this.emaSlow,
             atr14: this.atr14,
             atrPct: this.atrPct,
+            atrPctSMA: this.atrPctSMA,
             volSMA: this.volSMA,
             wickRatio,
             swing: {
@@ -64,6 +66,9 @@ export class ETH5mKlineManager extends BaseKlineManager {
             },
         };
     }
+    afterAnalysis(k) {
+        this.updateSignals();
+    }
     calcVolumeSMA(period = 20) {
         if (this.klines.length < period)
             return undefined;
@@ -71,8 +76,21 @@ export class ETH5mKlineManager extends BaseKlineManager {
         const sum = vols.reduce((a, b) => a + b, 0);
         return sum / vols.length;
     }
-    afterAnalysis(k) {
-        this.updateSignals();
+    calcAtrPctSMA(period = 20) {
+        if (this.klines.length < period + 15)
+            return undefined; // atr14 需要 warmup
+        // 用最近 period 根的 atrPct 做均值
+        const arr = [];
+        for (let i = this.klines.length - period; i < this.klines.length; i++) {
+            const slice = this.klines.slice(0, i + 1);
+            const atr = calcATR(slice, 14);
+            const close = this.klines[i]?.close;
+            if (atr != null && close != null && close > 0)
+                arr.push(atr / close);
+        }
+        if (!arr.length)
+            return undefined;
+        return arr.reduce((a, b) => a + b, 0) / arr.length;
     }
     updateSignals() {
         if (this.klines.length < 30)
@@ -98,23 +116,24 @@ export class ETH5mKlineManager extends BaseKlineManager {
         const longBias = this.emaFast > this.emaSlow;
         const shortBias = this.emaFast < this.emaSlow;
         this.volSMA = this.calcVolumeSMA(20);
+        this.atrPctSMA = this.calcAtrPctSMA(20);
         // ===== breakout =====
-        if (longBias && this.lastSwingHigh && lastClose > this.lastSwingHigh) {
+        if (longBias && this.lastSwingHigh != null && lastClose > this.lastSwingHigh) {
             this.breakoutSignal.long = true;
         }
-        if (shortBias && this.lastSwingLow && lastClose < this.lastSwingLow) {
+        if (shortBias && this.lastSwingLow != null && lastClose < this.lastSwingLow) {
             this.breakoutSignal.short = true;
         }
         // ===== pullback（收紧条件）=====
         if (longBias &&
-            this.lastSwingLow &&
+            this.lastSwingLow != null &&
             lastClose > this.lastSwingLow &&
             lastClose < this.emaFast &&
             lastClose > this.emaSlow) {
             this.pullbackSignal.long = true;
         }
         if (shortBias &&
-            this.lastSwingHigh &&
+            this.lastSwingHigh != null &&
             lastClose < this.lastSwingHigh &&
             lastClose > this.emaFast &&
             lastClose < this.emaSlow) {

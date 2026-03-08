@@ -1,3 +1,9 @@
+function ensureBucket(map, key) {
+    const anyMap = map;
+    if (!anyMap[key])
+        anyMap[key] = { count: 0, accepted: 0, rejected: 0 };
+    return anyMap[key];
+}
 export class BasicExecutionMetricsCollector {
     events = [];
     windowStart = Date.now();
@@ -12,24 +18,18 @@ export class BasicExecutionMetricsCollector {
         for (const e of this.events) {
             if (e.accepted)
                 accepted++;
-            // reason
-            if (!byReason[e.reason]) {
-                byReason[e.reason] = { count: 0, accepted: 0, rejected: 0 };
-            }
-            byReason[e.reason].count++;
-            e.accepted ? byReason[e.reason].accepted++ : byReason[e.reason].rejected++;
-            // symbol
-            if (!bySymbol[e.symbol]) {
-                bySymbol[e.symbol] = { count: 0, accepted: 0, rejected: 0 };
-            }
-            bySymbol[e.symbol].count++;
-            e.accepted ? bySymbol[e.symbol].accepted++ : bySymbol[e.symbol].rejected++;
+            // ===== reason（强类型）=====
+            const r = e.reason;
+            const rb = ensureBucket(byReason, r);
+            rb.count++;
+            e.accepted ? rb.accepted++ : rb.rejected++;
+            // ===== symbol（字符串索引 OK）=====
+            const sb = bySymbol[e.symbol] ?? (bySymbol[e.symbol] = { count: 0, accepted: 0, rejected: 0 });
+            sb.count++;
+            e.accepted ? sb.accepted++ : sb.rejected++;
         }
         return {
-            window: {
-                from: this.windowStart,
-                to: Date.now(),
-            },
+            window: { from: this.windowStart, to: Date.now() },
             totals: {
                 count: total,
                 accepted,
